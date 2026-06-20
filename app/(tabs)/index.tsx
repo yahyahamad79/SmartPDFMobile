@@ -28,6 +28,7 @@ const OFFLINE_TOOLS: Tool[] = [
   { id: 'img2pdf',  title: 'Images to PDF',   icon: '🖼️', desc: 'Convert images into a PDF' },
   { id: 'rotate',   title: 'Rotate Pages',    icon: '🔄', desc: 'Rotate pages in a PDF' },
   { id: 'imgconv',  title: 'Image Converter', icon: '🎨', desc: 'Convert between image formats' },
+  { id: 'protect', title: 'Protect PDF', icon: '🔒', desc: 'Encrypt a PDF with a password' },
 ];
 
 export default function HomeScreen() {
@@ -50,6 +51,10 @@ export default function HomeScreen() {
     if (tool.id === 'rotate') {
       router.push('/rotate-pdf');
       return;
+    }
+    if (tool.id === 'protect') {
+      router.push('/protect-pdf');
+    return;
     }
     // مؤقتاً: بقية الأدوات قيد البناء
     console.log('Tool pressed (coming soon):', tool.id);
