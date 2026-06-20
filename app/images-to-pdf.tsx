@@ -184,6 +184,13 @@ export default function ImagesToPdfScreen() {
     try {
       const pdfDoc = await PDFDocument.create();
 
+      // نضمّن الخط مرة واحدة إن كان الترقيم مفعّلاً
+      const font = addNumbers
+        ? await pdfDoc.embedFont(StandardFonts.Helvetica)
+        : null;
+      const fontSize = 12;
+
+      let pageNo = 1;
       for (const img of images) {
         const b64 = await readAsBase64(img.uri);
         const bytes = base64ToBytes(b64);
@@ -202,36 +209,34 @@ export default function ImagesToPdfScreen() {
               : await pdfDoc.embedPng(bytes);
         }
 
-        // صفحة بحجم الصورة + هامش بسيط
+        // هامش جانبي وعلوي ثابت، وهامش سفلي أكبر عند الترقيم ليتسع الرقم
         const margin = 20;
+        const bottomMargin = addNumbers ? 45 : 20;
         const pageW = embedded.width + margin * 2;
-        const pageH = embedded.height + margin * 2;
+        const pageH = embedded.height + margin + bottomMargin;
         const page = pdfDoc.addPage([pageW, pageH]);
+
+        // الصورة فوق المساحة المخصصة للرقم
         page.drawImage(embedded, {
           x: margin,
-          y: margin,
+          y: bottomMargin,
           width: embedded.width,
           height: embedded.height,
         });
-      }
 
-      // ترقيم الصفحات داخل كل صفحة (أسفل المنتصف)
-      if (addNumbers) {
-        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        const pages = pdfDoc.getPages();
-        const fontSize = 11;
-        pages.forEach((page, i) => {
-          const { width } = page.getSize();
-          const label = `${i + 1}`;
+        // رسم رقم الصفحة داخل الشريط السفلي (أسفل المنتصف)
+        if (addNumbers && font) {
+          const label = `${pageNo}`;
           const textWidth = font.widthOfTextAtSize(label, fontSize);
           page.drawText(label, {
-            x: width / 2 - textWidth / 2,
-            y: 8, // قرب أسفل الصفحة (الهامش 20، فيظهر داخل الهامش السفلي)
+            x: pageW / 2 - textWidth / 2,
+            y: 18, // منتصف الشريط السفلي البالغ 45
             size: fontSize,
             font,
             color: rgb(0.2, 0.2, 0.2),
           });
-        });
+        }
+        pageNo++;
       }
 
       const base64 = await pdfDoc.saveAsBase64();
