@@ -3,7 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,7 +13,9 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -21,6 +23,7 @@ import {
 /**
  * Images to PDF — offline tool.
  * Pick images (JPG/PNG) from gallery or files, reorder/remove them,
+ * optionally add page numbers (bottom-center) and set the output name,
  * then combine into a single PDF on-device with pdf-lib.
  * Each image becomes one page sized to the image. No internet required.
  */
@@ -35,6 +38,8 @@ export default function ImagesToPdfScreen() {
   const router = useRouter();
   const [images, setImages] = useState<PickedImage[]>([]);
   const [busy, setBusy] = useState(false);
+  const [outputName, setOutputName] = useState('images'); // اسم الملف الناتج
+  const [addNumbers, setAddNumbers] = useState(false);     // ترقيم الصفحات
 
   // استنتاج نوع الصورة من الامتداد أو الـ mime
   const guessMime = (uri: string, mime?: string): string => {
@@ -128,6 +133,15 @@ export default function ImagesToPdfScreen() {
     return bytes;
   };
 
+  // تنظيف اسم الملف وإضافة الامتداد
+  const finalFileName = () => {
+    let n = outputName.trim();
+    if (!n) n = 'images';
+    n = n.replace(/[\\/:*?"<>|]/g, '_');
+    if (!n.toLowerCase().endsWith('.pdf')) n += '.pdf';
+    return n;
+  };
+
   // الحفظ المباشر (أندرويد SAF / iOS مشاركة)
   const saveOutput = async (base64: string, fileName: string) => {
     if (Platform.OS === 'android') {
@@ -143,7 +157,7 @@ export default function ImagesToPdfScreen() {
         'application/pdf'
       );
       await FileSystem.writeAsStringAsync(destUri, base64, { encoding: 'base64' });
-      Alert.alert('Saved', 'PDF saved successfully.');
+      Alert.alert('Saved', `${fileName} saved successfully.`);
       return true;
     } else {
       const outUri = FileSystem.cacheDirectory + fileName;
@@ -201,8 +215,27 @@ export default function ImagesToPdfScreen() {
         });
       }
 
+      // ترقيم الصفحات داخل كل صفحة (أسفل المنتصف)
+      if (addNumbers) {
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const pages = pdfDoc.getPages();
+        const fontSize = 11;
+        pages.forEach((page, i) => {
+          const { width } = page.getSize();
+          const label = `${i + 1}`;
+          const textWidth = font.widthOfTextAtSize(label, fontSize);
+          page.drawText(label, {
+            x: width / 2 - textWidth / 2,
+            y: 8, // قرب أسفل الصفحة (الهامش 20، فيظهر داخل الهامش السفلي)
+            size: fontSize,
+            font,
+            color: rgb(0.2, 0.2, 0.2),
+          });
+        });
+      }
+
       const base64 = await pdfDoc.saveAsBase64();
-      await saveOutput(base64, 'images.pdf');
+      await saveOutput(base64, finalFileName());
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'Unknown error';
       Alert.alert('Conversion failed', msg);
@@ -265,9 +298,7 @@ export default function ImagesToPdfScreen() {
                     onPress={() => moveImage(i, -1)}
                     disabled={busy || i === 0}
                   >
-                    <Text
-                      style={[styles.orderBtn, i === 0 && styles.orderBtnDisabled]}
-                    >
+                    <Text style={[styles.orderBtn, i === 0 && styles.orderBtnDisabled]}>
                       ▲
                     </Text>
                   </TouchableOpacity>
@@ -300,6 +331,36 @@ export default function ImagesToPdfScreen() {
                 </TouchableOpacity>
               </View>
             ))}
+          </View>
+        )}
+
+        {/* Options: اسم الملف + الترقيم */}
+        {images.length > 0 && (
+          <View style={styles.optionsBox}>
+            <Text style={styles.optLabel}>Output file name</Text>
+            <View style={styles.nameRow}>
+              <TextInput
+                style={styles.input}
+                value={outputName}
+                onChangeText={setOutputName}
+                placeholder="images"
+                placeholderTextColor="#64748b"
+                editable={!busy}
+                autoCapitalize="none"
+              />
+              <Text style={styles.ext}>.pdf</Text>
+            </View>
+
+            <View style={styles.switchRow}>
+              <Switch
+                value={addNumbers}
+                onValueChange={setAddNumbers}
+                disabled={busy}
+                trackColor={{ false: '#334155', true: NAVY }}
+                thumbColor={addNumbers ? '#60a5fa' : '#94a3b8'}
+              />
+              <Text style={styles.switchLabel}>Add page numbers (bottom-center)</Text>
+            </View>
           </View>
         )}
 
@@ -386,6 +447,32 @@ const styles = StyleSheet.create({
   },
   imgName: { flex: 1, color: '#e2e8f0', fontSize: 13, fontWeight: '600' },
   removeBtn: { color: '#f87171', fontWeight: '800', fontSize: 14, paddingHorizontal: 4 },
+
+  optionsBox: {
+    backgroundColor: '#1e293b',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#293548',
+  },
+  optLabel: { color: '#e2e8f0', fontWeight: '800', fontSize: 13, marginBottom: 8 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  input: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  ext: { color: '#94a3b8', fontSize: 14, fontWeight: '700' },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
+  switchLabel: { color: '#cbd5e1', fontSize: 13, fontWeight: '600', flex: 1 },
 
   actionBtn: {
     backgroundColor: NAVY,
