@@ -1,6 +1,8 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
+  BackHandler,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -27,12 +29,19 @@ const OFFLINE_TOOLS: Tool[] = [
   { id: 'split',    title: 'Split PDF',       icon: '✂️', desc: 'Split a PDF into separate files' },
   { id: 'img2pdf',  title: 'Images to PDF',   icon: '🖼️', desc: 'Convert images into a PDF' },
   { id: 'rotate',   title: 'Rotate Pages',    icon: '🔄', desc: 'Rotate pages in a PDF' },
-  { id: 'imgconv',  title: 'Image Converter', icon: '🎨', desc: 'Convert between image formats' },
-  { id: 'protect', title: 'Protect PDF', icon: '🔒', desc: 'Encrypt a PDF with a password' },
+  { id: 'delete',   title: 'Delete Pages',    icon: '🗑️', desc: 'Remove pages from a PDF' },
+  { id: 'protect',  title: 'Protect PDF',     icon: '🔒', desc: 'Encrypt a PDF with a password' },
 ];
 
 export default function HomeScreen() {
   const router = useRouter();
+
+  // إغلاق التطبيق (أندرويد فقط؛ iOS يمنع الإغلاق البرمجي)
+  const handleExit = () => {
+    if (Platform.OS === 'android') {
+      BackHandler.exitApp();
+    }
+  };
 
   const handleToolPress = (tool: Tool) => {
     // الأدوات الجاهزة لها شاشات؛ البقية ستُضاف لاحقاً
@@ -54,7 +63,11 @@ export default function HomeScreen() {
     }
     if (tool.id === 'protect') {
       router.push('/protect-pdf');
-    return;
+      return;
+    }
+    if (tool.id === 'delete') {
+      router.push('/delete-pages');
+      return;
     }
     // مؤقتاً: بقية الأدوات قيد البناء
     console.log('Tool pressed (coming soon):', tool.id);
@@ -83,8 +96,21 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.appName}>Smart PDF</Text>
-          <Text style={styles.tagline}>Your all-in-one PDF toolkit</Text>
+          <View style={styles.headerRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.appName}>Smart PDF</Text>
+              <Text style={styles.tagline}>Your all-in-one PDF toolkit</Text>
+            </View>
+            {Platform.OS === 'android' && (
+              <TouchableOpacity
+                style={styles.exitBtn}
+                onPress={handleExit}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.exitText}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Offline section */}
@@ -109,8 +135,24 @@ const styles = StyleSheet.create({
   scroll: { padding: 16 },
 
   header: { paddingVertical: 20, paddingHorizontal: 4 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   appName: { fontSize: 30, fontWeight: '800', color: '#ffffff' },
   tagline: { fontSize: 14, color: '#94a3b8', marginTop: 4 },
+  exitBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exitText: { color: '#f87171', fontSize: 18, fontWeight: '800' },
 
   section: { marginTop: 14 },
   sectionTitle: { fontSize: 17, fontWeight: '800', color: '#e2e8f0', marginBottom: 2 },
