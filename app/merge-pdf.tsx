@@ -2,7 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -11,7 +11,9 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -19,6 +21,7 @@ import {
 /**
  * Merge PDF — offline tool.
  * Pick multiple PDF files, choose specific pages from each,
+ * optionally add page numbers (bottom-center) and set the output name,
  * merge them on-device with pdf-lib, then save (Android) or share (iOS).
  * No internet required.
  */
@@ -27,23 +30,21 @@ type PickedFile = {
   uri: string;
   name: string;
   size?: number;
-  pageCount: number;          // عدد صفحات الملف
-  selected: number[];         // أرقام الصفحات المختارة (1-based)
+  pageCount: number;
+  selected: number[];
 };
 
 export default function MergePdfScreen() {
   const router = useRouter();
   const [files, setFiles] = useState<PickedFile[]>([]);
   const [busy, setBusy] = useState(false);
+  const [outputName, setOutputName] = useState('merged');   // اسم الملف الناتج
+  const [addNumbers, setAddNumbers] = useState(false);       // ترقيم الصفحات
 
-  // قراءة ملف كـ base64
-  const readAsBase64 = async (uri: string) => {
-    return await FileSystem.readAsStringAsync(uri, {
-      encoding: 'base64',
-    });
-  };
+  const readAsBase64 = async (uri: string) =>
+    await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
 
-  // اختيار ملفات PDF من الجهاز + قراءة عدد صفحاتها
+  // اختيار ملفات PDF + قراءة عدد صفحاتها
   const pickFiles = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -59,7 +60,6 @@ export default function MergePdfScreen() {
           const b64 = await readAsBase64(a.uri);
           const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
           const count = doc.getPageCount();
-          // افتراضياً: كل الصفحات مختارة
           const all = Array.from({ length: count }, (_, i) => i + 1);
           picked.push({
             uri: a.uri,
@@ -83,7 +83,6 @@ export default function MergePdfScreen() {
 
   const clearAll = () => setFiles([]);
 
-  // تبديل اختيار صفحة معينة (1-based)
   const togglePage = (uri: string, page: number) => {
     setFiles((prev) =>
       prev.map((f) => {
@@ -97,7 +96,6 @@ export default function MergePdfScreen() {
     );
   };
 
-  // تحديد كل صفحات ملف
   const selectAllPages = (uri: string) => {
     setFiles((prev) =>
       prev.map((f) =>
@@ -108,7 +106,6 @@ export default function MergePdfScreen() {
     );
   };
 
-  // إلغاء كل صفحات ملف
   const clearPages = (uri: string) => {
     setFiles((prev) =>
       prev.map((f) => (f.uri === uri ? { ...f, selected: [] } : f))
@@ -132,7 +129,16 @@ export default function MergePdfScreen() {
     return true;
   };
 
-  // الدمج عبر pdf-lib (داخل الجهاز)
+  // تنظيف اسم الملف وإضافة الامتداد
+  const finalFileName = () => {
+    let n = outputName.trim();
+    if (!n) n = 'merged';
+    // إزالة الرموز غير الصالحة في أسماء الملفات
+    n = n.replace(/[\\/:*?"<>|]/g, '_');
+    if (!n.toLowerCase().endsWith('.pdf')) n += '.pdf';
+    return n;
+  };
+
   const mergeFiles = async () => {
     if (files.length < 2) {
       Alert.alert('Need more files', 'Please pick at least two PDF files to merge.');
@@ -152,21 +158,37 @@ export default function MergePdfScreen() {
         if (f.selected.length === 0) continue;
         const b64 = await readAsBase64(f.uri);
         const src = await PDFDocument.load(b64, { ignoreEncryption: true });
-        // تحويل الأرقام من 1-based إلى 0-based لـ pdf-lib، مع الحفاظ على الترتيب المختار
         const indices = f.selected.map((p) => p - 1);
         const pages = await mergedPdf.copyPages(src, indices);
         pages.forEach((p) => mergedPdf.addPage(p));
       }
 
+      // ترقيم الصفحات أسفل المنتصف
+      if (addNumbers) {
+        const font = await mergedPdf.embedFont(StandardFonts.Helvetica);
+        const pages = mergedPdf.getPages();
+        const fontSize = 11;
+        pages.forEach((page, i) => {
+          const { width } = page.getSize();
+          const label = `${i + 1}`;
+          const textWidth = font.widthOfTextAtSize(label, fontSize);
+          page.drawText(label, {
+            x: width / 2 - textWidth / 2,
+            y: 18, // مسافة من أسفل الصفحة
+            size: fontSize,
+            font,
+            color: rgb(0.2, 0.2, 0.2),
+          });
+        });
+      }
+
       const mergedBase64 = await mergedPdf.saveAsBase64();
-      const fileName = 'merged.pdf';
+      const fileName = finalFileName();
 
       if (Platform.OS === 'android') {
-        // حفظ مباشر في مجلد يختاره المستخدم
         const ok = await saveAndroid(mergedBase64, fileName);
-        if (ok) Alert.alert('Saved', 'Merged PDF saved successfully.');
+        if (ok) Alert.alert('Saved', `${fileName} saved successfully.`);
       } else {
-        // iOS: حفظ مؤقت ثم مشاركة (لا يوجد SAF على iOS)
         const outUri = FileSystem.cacheDirectory + fileName;
         await FileSystem.writeAsStringAsync(outUri, mergedBase64, {
           encoding: 'base64',
@@ -231,7 +253,6 @@ export default function MergePdfScreen() {
 
             {files.map((f, i) => (
               <View key={f.uri} style={styles.fileCard}>
-                {/* اسم الملف وحجمه */}
                 <View style={styles.fileRow}>
                   <TouchableOpacity onPress={() => removeFile(f.uri)} disabled={busy}>
                     <Text style={styles.removeBtn}>✕</Text>
@@ -242,30 +263,20 @@ export default function MergePdfScreen() {
                   </Text>
                 </View>
 
-                {/* أدوات التحديد */}
                 <View style={styles.pageTools}>
                   <Text style={styles.pageInfo}>
                     {f.selected.length} / {f.pageCount} pages
                   </Text>
                   <View style={styles.pageToolsBtns}>
-                    <TouchableOpacity
-                      onPress={() => clearPages(f.uri)}
-                      disabled={busy}
-                    >
+                    <TouchableOpacity onPress={() => clearPages(f.uri)} disabled={busy}>
                       <Text style={styles.toolBtnText}>None</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => selectAllPages(f.uri)}
-                      disabled={busy}
-                    >
-                      <Text style={[styles.toolBtnText, { color: '#60a5fa' }]}>
-                        All
-                      </Text>
+                    <TouchableOpacity onPress={() => selectAllPages(f.uri)} disabled={busy}>
+                      <Text style={[styles.toolBtnText, { color: '#60a5fa' }]}>All</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
 
-                {/* أزرار أرقام الصفحات */}
                 <View style={styles.pagesWrap}>
                   {Array.from({ length: f.pageCount }, (_, idx) => {
                     const page = idx + 1;
@@ -278,10 +289,7 @@ export default function MergePdfScreen() {
                         disabled={busy}
                       >
                         <Text
-                          style={[
-                            styles.pageBtnText,
-                            active && styles.pageBtnTextActive,
-                          ]}
+                          style={[styles.pageBtnText, active && styles.pageBtnTextActive]}
                         >
                           {page}
                         </Text>
@@ -294,12 +302,41 @@ export default function MergePdfScreen() {
           </View>
         )}
 
+        {/* Options: اسم الملف + الترقيم */}
+        {files.length > 0 && (
+          <View style={styles.optionsBox}>
+            <Text style={styles.optLabel}>Output file name</Text>
+            <View style={styles.nameRow}>
+              <TextInput
+                style={styles.input}
+                value={outputName}
+                onChangeText={setOutputName}
+                placeholder="merged"
+                placeholderTextColor="#64748b"
+                editable={!busy}
+                autoCapitalize="none"
+              />
+              <Text style={styles.ext}>.pdf</Text>
+            </View>
+
+            <View style={styles.switchRow}>
+              <Switch
+                value={addNumbers}
+                onValueChange={setAddNumbers}
+                disabled={busy}
+                trackColor={{ false: '#334155', true: NAVY }}
+                thumbColor={addNumbers ? '#60a5fa' : '#94a3b8'}
+              />
+              <Text style={styles.switchLabel}>Add page numbers (bottom-center)</Text>
+            </View>
+          </View>
+        )}
+
         {/* Merge button */}
         <TouchableOpacity
           style={[
             styles.mergeBtn,
-            (files.length < 2 || totalSelected === 0 || busy) &&
-              styles.mergeBtnDisabled,
+            (files.length < 2 || totalSelected === 0 || busy) && styles.mergeBtnDisabled,
           ]}
           onPress={mergeFiles}
           disabled={files.length < 2 || totalSelected === 0 || busy}
@@ -372,12 +409,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1e293b',
   },
-  fileRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 10,
-  },
+  fileRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   removeBtn: { color: '#f87171', fontWeight: '800', fontSize: 14 },
   fileSize: { color: '#64748b', fontSize: 11, fontWeight: '700' },
   fileName: { flex: 1, color: '#e2e8f0', fontSize: 13, fontWeight: '600', textAlign: 'right' },
@@ -392,11 +424,7 @@ const styles = StyleSheet.create({
   pageToolsBtns: { flexDirection: 'row', gap: 16 },
   toolBtnText: { color: '#94a3b8', fontSize: 12, fontWeight: '700' },
 
-  pagesWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
+  pagesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pageBtn: {
     minWidth: 38,
     height: 38,
@@ -408,12 +436,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pageBtnActive: {
-    backgroundColor: NAVY,
-    borderColor: '#60a5fa',
-  },
+  pageBtnActive: { backgroundColor: NAVY, borderColor: '#60a5fa' },
   pageBtnText: { color: '#94a3b8', fontSize: 13, fontWeight: '700' },
   pageBtnTextActive: { color: '#ffffff' },
+
+  optionsBox: {
+    backgroundColor: '#1e293b',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#293548',
+  },
+  optLabel: { color: '#e2e8f0', fontWeight: '800', fontSize: 13, marginBottom: 8 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  input: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  ext: { color: '#94a3b8', fontSize: 14, fontWeight: '700' },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
+  switchLabel: { color: '#cbd5e1', fontSize: 13, fontWeight: '600', flex: 1 },
 
   mergeBtn: {
     backgroundColor: NAVY,

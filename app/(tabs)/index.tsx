@@ -1,13 +1,13 @@
+import { useRouter } from 'expo-router';
 import React from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
   SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 
 /**
  * Home screen for the Smart PDF mobile app.
@@ -41,6 +41,10 @@ export default function HomeScreen() {
     }
     if (tool.id === 'split') {
       router.push('/split-pdf');
+      return;
+    }
+    if (tool.id === 'img2pdf') {
+      router.push('/images-to-pdf');
       return;
     }
     // مؤقتاً: بقية الأدوات قيد البناء
