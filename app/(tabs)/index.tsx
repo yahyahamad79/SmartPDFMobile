@@ -1,22 +1,18 @@
-import { useRouter } from 'expo-router';
 import React from 'react';
 import {
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  SafeAreaView,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 
 /**
  * Home screen for the Smart PDF mobile app.
- * Shows a grid of tools, split into:
- *   - Offline tools (run on-device, no internet)
- *   - Online tools (call the backend server)
- *
- * Each tool is a tappable card. Navigation is wired later
- * (currently a placeholder onPress).
+ * Shows a grid of offline tools that run fully on-device (no internet).
+ * Online tools are temporarily removed and will be added back later.
  */
 
 type Tool = {
@@ -34,16 +30,10 @@ const OFFLINE_TOOLS: Tool[] = [
   { id: 'imgconv',  title: 'Image Converter', icon: '🎨', desc: 'Convert between image formats' },
 ];
 
-const ONLINE_TOOLS: Tool[] = [
-  { id: 'office',   title: 'Office to PDF',   icon: '📄', desc: 'Word, Excel, PowerPoint to PDF' },
-  { id: 'extract',  title: 'Extract Text',    icon: '📝', desc: 'Extract text from a PDF' },
-  { id: 'ocr',      title: 'OCR',             icon: '🔍', desc: 'Recognize text in scanned files' },
-];
-
 export default function HomeScreen() {
   const router = useRouter();
 
- const handleToolPress = (tool: Tool) => {
+  const handleToolPress = (tool: Tool) => {
     // الأدوات الجاهزة لها شاشات؛ البقية ستُضاف لاحقاً
     if (tool.id === 'merge') {
       router.push('/merge-pdf');
@@ -57,7 +47,7 @@ export default function HomeScreen() {
     console.log('Tool pressed (coming soon):', tool.id);
   };
 
-  const renderCard = (tool: Tool, badge: 'Offline' | 'Online') => (
+  const renderCard = (tool: Tool) => (
     <TouchableOpacity
       key={tool.id}
       style={styles.card}
@@ -66,13 +56,8 @@ export default function HomeScreen() {
     >
       <View style={styles.cardTop}>
         <Text style={styles.cardIcon}>{tool.icon}</Text>
-        <View
-          style={[
-            styles.badge,
-            badge === 'Offline' ? styles.badgeOffline : styles.badgeOnline,
-          ]}
-        >
-          <Text style={styles.badgeText}>{badge}</Text>
+        <View style={[styles.badge, styles.badgeOffline]}>
+          <Text style={styles.badgeText}>Offline</Text>
         </View>
       </View>
       <Text style={styles.cardTitle}>{tool.title}</Text>
@@ -94,16 +79,7 @@ export default function HomeScreen() {
           <Text style={styles.sectionTitle}>⚡ Works Offline</Text>
           <Text style={styles.sectionHint}>No internet needed — runs on your device</Text>
           <View style={styles.grid}>
-            {OFFLINE_TOOLS.map((t) => renderCard(t, 'Offline'))}
-          </View>
-        </View>
-
-        {/* Online section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>☁️ Needs Internet</Text>
-          <Text style={styles.sectionHint}>Processed on the server</Text>
-          <View style={styles.grid}>
-            {ONLINE_TOOLS.map((t) => renderCard(t, 'Online'))}
+            {OFFLINE_TOOLS.map((t) => renderCard(t))}
           </View>
         </View>
 
@@ -150,7 +126,6 @@ const styles = StyleSheet.create({
   cardIcon: { fontSize: 28 },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   badgeOffline: { backgroundColor: '#14532d' },
-  badgeOnline: { backgroundColor: '#1e3a5f' },
   badgeText: { fontSize: 10, fontWeight: '700', color: '#cbd5e1' },
   cardTitle: { fontSize: 15, fontWeight: '800', color: '#f1f5f9' },
   cardDesc: { fontSize: 11.5, color: '#94a3b8', marginTop: 3, lineHeight: 16 },
