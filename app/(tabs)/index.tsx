@@ -47,6 +47,10 @@ export default function HomeScreen() {
       router.push('/images-to-pdf');
       return;
     }
+    if (tool.id === 'rotate') {
+      router.push('/rotate-pdf');
+      return;
+    }
     // مؤقتاً: بقية الأدوات قيد البناء
     console.log('Tool pressed (coming soon):', tool.id);
   };

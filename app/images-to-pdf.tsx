@@ -3,7 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,9 +23,9 @@ import {
 /**
  * Images to PDF — offline tool.
  * Pick images (JPG/PNG) from gallery or files, reorder/remove them,
- * optionally add page numbers (bottom-center) and set the output name,
- * then combine into a single PDF on-device with pdf-lib.
- * Each image becomes one page sized to the image. No internet required.
+ * auto-rotate landscape images to portrait, optionally add page numbers,
+ * set the output name, then combine into a single PDF on-device with pdf-lib.
+ * No internet required.
  */
 
 type PickedImage = {
@@ -38,8 +38,9 @@ export default function ImagesToPdfScreen() {
   const router = useRouter();
   const [images, setImages] = useState<PickedImage[]>([]);
   const [busy, setBusy] = useState(false);
-  const [outputName, setOutputName] = useState('images'); // اسم الملف الناتج
-  const [addNumbers, setAddNumbers] = useState(false);     // ترقيم الصفحات
+  const [outputName, setOutputName] = useState('images');  // اسم الملف الناتج
+  const [addNumbers, setAddNumbers] = useState(false);      // ترقيم الصفحات
+  const [autoPortrait, setAutoPortrait] = useState(true);   // تدوير الصور الأفقية لعمودية
 
   // استنتاج نوع الصورة من الامتداد أو الـ mime
   const guessMime = (uri: string, mime?: string): string => {
@@ -184,7 +185,6 @@ export default function ImagesToPdfScreen() {
     try {
       const pdfDoc = await PDFDocument.create();
 
-      // نضمّن الخط مرة واحدة إن كان الترقيم مفعّلاً
       const font = addNumbers
         ? await pdfDoc.embedFont(StandardFonts.Helvetica)
         : null;
@@ -202,35 +202,54 @@ export default function ImagesToPdfScreen() {
               ? await pdfDoc.embedPng(bytes)
               : await pdfDoc.embedJpg(bytes);
         } catch {
-          // إن فشل النوع المتوقع، جرّب الآخر كحل احتياطي
           embedded =
             img.mime === 'image/png'
               ? await pdfDoc.embedJpg(bytes)
               : await pdfDoc.embedPng(bytes);
         }
 
-        // هامش جانبي وعلوي ثابت، وهامش سفلي أكبر عند الترقيم ليتسع الرقم
+        const iw = embedded.width;
+        const ih = embedded.height;
+        const isLandscape = iw > ih;
+        // ندوّر الصورة الأفقية 90° لتصبح عمودية إن كان الخيار مفعّلاً
+        const rotate = autoPortrait && isLandscape;
+
         const margin = 20;
         const bottomMargin = addNumbers ? 45 : 20;
-        const pageW = embedded.width + margin * 2;
-        const pageH = embedded.height + margin + bottomMargin;
+
+        // أبعاد الصورة بعد التدوير المنطقي (العرض/الارتفاع يتبادلان عند الدوران)
+        const drawnW = rotate ? ih : iw;
+        const drawnH = rotate ? iw : ih;
+
+        const pageW = drawnW + margin * 2;
+        const pageH = drawnH + margin + bottomMargin;
         const page = pdfDoc.addPage([pageW, pageH]);
 
-        // الصورة فوق المساحة المخصصة للرقم
-        page.drawImage(embedded, {
-          x: margin,
-          y: bottomMargin,
-          width: embedded.width,
-          height: embedded.height,
-        });
+        if (rotate) {
+          // عند الدوران 90°، نضع نقطة الأصل بحيث تملأ الصورة المساحة عمودياً
+          // الصورة تُرسم بأبعادها الأصلية (iw×ih) لكن مدوّرة، فتشغل drawnW×drawnH
+          page.drawImage(embedded, {
+            x: margin + drawnW, // الزاوية تنتقل لليمين بمقدار العرض المرسوم
+            y: bottomMargin,
+            width: iw,
+            height: ih,
+            rotate: degrees(90),
+          });
+        } else {
+          page.drawImage(embedded, {
+            x: margin,
+            y: bottomMargin,
+            width: iw,
+            height: ih,
+          });
+        }
 
-        // رسم رقم الصفحة داخل الشريط السفلي (أسفل المنتصف)
         if (addNumbers && font) {
           const label = `${pageNo}`;
           const textWidth = font.widthOfTextAtSize(label, fontSize);
           page.drawText(label, {
             x: pageW / 2 - textWidth / 2,
-            y: 18, // منتصف الشريط السفلي البالغ 45
+            y: 18,
             size: fontSize,
             font,
             color: rgb(0.2, 0.2, 0.2),
@@ -297,7 +316,6 @@ export default function ImagesToPdfScreen() {
 
             {images.map((img, i) => (
               <View key={`${img.uri}-${i}`} style={styles.imgRow}>
-                {/* أزرار الترتيب */}
                 <View style={styles.orderBtns}>
                   <TouchableOpacity
                     onPress={() => moveImage(i, -1)}
@@ -322,15 +340,12 @@ export default function ImagesToPdfScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {/* معاينة مصغرة */}
                 <Image source={{ uri: img.uri }} style={styles.thumb} />
 
-                {/* الاسم */}
                 <Text style={styles.imgName} numberOfLines={1}>
                   {i + 1}. {img.name}
                 </Text>
 
-                {/* حذف */}
                 <TouchableOpacity onPress={() => removeImage(i)} disabled={busy}>
                   <Text style={styles.removeBtn}>✕</Text>
                 </TouchableOpacity>
@@ -339,7 +354,7 @@ export default function ImagesToPdfScreen() {
           </View>
         )}
 
-        {/* Options: اسم الملف + الترقيم */}
+        {/* Options: اسم الملف + التدوير + الترقيم */}
         {images.length > 0 && (
           <View style={styles.optionsBox}>
             <Text style={styles.optLabel}>Output file name</Text>
@@ -354,6 +369,19 @@ export default function ImagesToPdfScreen() {
                 autoCapitalize="none"
               />
               <Text style={styles.ext}>.pdf</Text>
+            </View>
+
+            <View style={styles.switchRow}>
+              <Switch
+                value={autoPortrait}
+                onValueChange={setAutoPortrait}
+                disabled={busy}
+                trackColor={{ false: '#334155', true: NAVY }}
+                thumbColor={autoPortrait ? '#60a5fa' : '#94a3b8'}
+              />
+              <Text style={styles.switchLabel}>
+                Auto-rotate landscape images to portrait (90°)
+              </Text>
             </View>
 
             <View style={styles.switchRow}>
