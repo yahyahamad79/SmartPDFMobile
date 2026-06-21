@@ -24,6 +24,8 @@ import {
  *   2) custom   — type a range string like "1-5, 8, 11-13" -> one output PDF
  *   3) perPage  — each page -> its own PDF
  *   4) ranges   — split into fixed-size chunks (e.g. every 5 pages)
+ * Output file name is configurable (used directly for single-file modes,
+ * and as a prefix for multi-file modes).
  * Runs fully on-device with pdf-lib. Saves (Android SAF) or shares (iOS).
  */
 
@@ -44,13 +46,21 @@ export default function SplitPdfScreen() {
   const [mode, setMode] = useState<Mode>('extract');
   const [chunkSize, setChunkSize] = useState('5');   // لوضع المدى الثابت
   const [rangeText, setRangeText] = useState('');     // لوضع النطاق المخصص
-
-  const baseName = () => (file?.name || 'document').replace(/\.pdf$/i, '');
+  const [outputName, setOutputName] = useState('split'); // اسم الملف الناتج
 
   const readAsBase64 = async (uri: string) =>
     await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
 
-  // تحليل نص النطاق مثل "1-5, 8, 11-13" إلى مصفوفة أرقام 1-based مرتبة وفريدة وضمن الحدود
+  // اسم أساسي نظيف (بدون امتداد ولا رموز غير صالحة)
+  const cleanBase = () => {
+    let n = outputName.trim();
+    if (!n) n = 'split';
+    n = n.replace(/\.pdf$/i, '');
+    n = n.replace(/[\\/:*?"<>|]/g, '_');
+    return n;
+  };
+
+  // تحليل نص النطاق مثل "1-5, 8, 11-13"
   const parseRangeText = (text: string, max: number): number[] => {
     const pages: number[] = [];
     const parts = text.split(',');
@@ -62,7 +72,7 @@ export default function SplitPdfScreen() {
         let a = parseInt(aStr, 10);
         let b = parseInt(bStr, 10);
         if (isNaN(a) || isNaN(b)) continue;
-        if (a > b) [a, b] = [b, a]; // عكس إن كُتب بالعكس
+        if (a > b) [a, b] = [b, a];
         for (let p = a; p <= b; p++) {
           if (p >= 1 && p <= max) pages.push(p);
         }
@@ -71,11 +81,9 @@ export default function SplitPdfScreen() {
         if (!isNaN(p) && p >= 1 && p <= max) pages.push(p);
       }
     }
-    // إزالة التكرار مع الحفاظ على الترتيب المكتوب
     return [...new Set(pages)];
   };
 
-  // اختيار ملف PDF واحد + قراءة عدد صفحاته
   const pickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -95,6 +103,7 @@ export default function SplitPdfScreen() {
         pageCount: count,
         selected: Array.from({ length: count }, (_, i) => i + 1),
       });
+      setOutputName((a.name || 'split').replace(/\.pdf$/i, '') + '_split');
     } catch (e) {
       Alert.alert('Error', 'Could not read the PDF file.');
     }
@@ -123,7 +132,6 @@ export default function SplitPdfScreen() {
   const clearPages = () =>
     setFile((prev) => (prev ? { ...prev, selected: [] } : prev));
 
-  // كتابة ملف ناتج واحد (أندرويد: SAF / iOS: cache ثم مشاركة)
   const outputOne = async (
     base64: string,
     fileName: string,
@@ -144,7 +152,6 @@ export default function SplitPdfScreen() {
     }
   };
 
-  // بناء مستند جديد من مجموعة صفحات (0-based indices) وإرجاع base64
   const buildPdf = async (src: PDFDocument, indices: number[]) => {
     const out = await PDFDocument.create();
     const pages = await out.copyPages(src, indices);
@@ -158,7 +165,6 @@ export default function SplitPdfScreen() {
       return;
     }
 
-    // التحقق حسب الوضع
     let customPages: number[] = [];
     if (mode === 'extract' && file.selected.length === 0) {
       Alert.alert('No pages', 'Please select at least one page to extract.');
@@ -167,10 +173,7 @@ export default function SplitPdfScreen() {
     if (mode === 'custom') {
       customPages = parseRangeText(rangeText, file.pageCount);
       if (customPages.length === 0) {
-        Alert.alert(
-          'Invalid range',
-          'Please enter a valid range, e.g. 1-5, 8, 11-13.'
-        );
+        Alert.alert('Invalid range', 'Please enter a valid range, e.g. 1-5, 8, 11-13.');
         return;
       }
     }
@@ -189,7 +192,6 @@ export default function SplitPdfScreen() {
       const src = await PDFDocument.load(b64, { ignoreEncryption: true });
       const total = src.getPageCount();
 
-      // طلب مجلد مرة واحدة على أندرويد
       let dirUri: string | null = null;
       if (Platform.OS === 'android') {
         const perm =
@@ -202,34 +204,33 @@ export default function SplitPdfScreen() {
         dirUri = perm.directoryUri;
       }
 
-      const outputs: string[] = []; // للمشاركة على iOS
-      const name = baseName();
+      const outputs: string[] = [];
+      const base = cleanBase();
 
       if (mode === 'extract') {
         const indices = file.selected.map((p) => p - 1);
         const out64 = await buildPdf(src, indices);
-        const uri = await outputOne(out64, `${name}_extracted.pdf`, dirUri);
+        const uri = await outputOne(out64, `${base}.pdf`, dirUri);
         outputs.push(uri);
       } else if (mode === 'custom') {
         const indices = customPages.map((p) => p - 1);
         const out64 = await buildPdf(src, indices);
-        const uri = await outputOne(out64, `${name}_pages.pdf`, dirUri);
+        const uri = await outputOne(out64, `${base}.pdf`, dirUri);
         outputs.push(uri);
       } else if (mode === 'perPage') {
         for (let i = 0; i < total; i++) {
           const out64 = await buildPdf(src, [i]);
-          const uri = await outputOne(out64, `${name}_page_${i + 1}.pdf`, dirUri);
+          const uri = await outputOne(out64, `${base}_page_${i + 1}.pdf`, dirUri);
           outputs.push(uri);
         }
       } else {
-        // ranges
         for (let start = 0; start < total; start += size) {
           const indices: number[] = [];
           for (let j = start; j < Math.min(start + size, total); j++) indices.push(j);
           const out64 = await buildPdf(src, indices);
           const from = start + 1;
           const to = Math.min(start + size, total);
-          const uri = await outputOne(out64, `${name}_${from}-${to}.pdf`, dirUri);
+          const uri = await outputOne(out64, `${base}_${from}-${to}.pdf`, dirUri);
           outputs.push(uri);
         }
       }
@@ -264,16 +265,21 @@ export default function SplitPdfScreen() {
     return `${(bytes / 1048576).toFixed(2)} MB`;
   };
 
-  // معاينة عدد صفحات النطاق المخصص
   const customCount = file ? parseRangeText(rangeText, file.pageCount).length : 0;
 
-  // نص زر التنفيذ حسب الوضع
   const actionLabel = () => {
     const verb = Platform.OS === 'android' ? 'Save' : 'Share';
     if (mode === 'extract') return `✂️ Extract & ${verb}`;
     if (mode === 'custom') return `✂️ Extract range & ${verb}`;
     if (mode === 'perPage') return `✂️ Split each page & ${verb}`;
     return `✂️ Split by ${chunkSize || '?'} & ${verb}`;
+  };
+
+  // ملاحظة توضيحية لاسم الملف حسب الوضع
+  const nameHint = () => {
+    if (mode === 'perPage') return 'Used as prefix: name_page_1.pdf, name_page_2.pdf …';
+    if (mode === 'ranges') return 'Used as prefix: name_1-5.pdf, name_6-10.pdf …';
+    return 'The output file will be saved as name.pdf';
   };
 
   const canRun =
@@ -337,10 +343,7 @@ export default function SplitPdfScreen() {
                   disabled={busy}
                 >
                   <Text
-                    style={[
-                      styles.modeBtnText,
-                      mode === m && styles.modeBtnTextActive,
-                    ]}
+                    style={[styles.modeBtnText, mode === m && styles.modeBtnTextActive]}
                   >
                     {label}
                   </Text>
@@ -348,7 +351,7 @@ export default function SplitPdfScreen() {
               ))}
             </View>
 
-            {/* وضع الاستخراج: أزرار صفحات */}
+            {/* وضع الاستخراج */}
             {mode === 'extract' && (
               <View style={styles.listBox}>
                 <View style={styles.pageTools}>
@@ -360,9 +363,7 @@ export default function SplitPdfScreen() {
                       <Text style={styles.toolBtnText}>None</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={selectAll} disabled={busy}>
-                      <Text style={[styles.toolBtnText, { color: '#60a5fa' }]}>
-                        All
-                      </Text>
+                      <Text style={[styles.toolBtnText, { color: '#60a5fa' }]}>All</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -378,10 +379,7 @@ export default function SplitPdfScreen() {
                         disabled={busy}
                       >
                         <Text
-                          style={[
-                            styles.pageBtnText,
-                            active && styles.pageBtnTextActive,
-                          ]}
+                          style={[styles.pageBtnText, active && styles.pageBtnTextActive]}
                         >
                           {page}
                         </Text>
@@ -392,7 +390,7 @@ export default function SplitPdfScreen() {
               </View>
             )}
 
-            {/* وضع النطاق المخصص: حقل نصي */}
+            {/* وضع النطاق المخصص */}
             {mode === 'custom' && (
               <View style={styles.listBox}>
                 <Text style={styles.modeHint}>
@@ -421,7 +419,7 @@ export default function SplitPdfScreen() {
               </View>
             )}
 
-            {/* وضع كل صفحة: شرح */}
+            {/* وضع كل صفحة */}
             {mode === 'perPage' && (
               <View style={styles.listBox}>
                 <Text style={styles.modeHint}>
@@ -431,7 +429,7 @@ export default function SplitPdfScreen() {
               </View>
             )}
 
-            {/* وضع المدى الثابت: حقل الحجم */}
+            {/* وضع المدى الثابت */}
             {mode === 'ranges' && (
               <View style={styles.listBox}>
                 <Text style={styles.modeHint}>Pages per file:</Text>
@@ -452,6 +450,24 @@ export default function SplitPdfScreen() {
                 )}
               </View>
             )}
+
+            {/* اسم الملف الناتج */}
+            <View style={styles.optionsBox}>
+              <Text style={styles.optLabel}>Output file name</Text>
+              <View style={styles.nameRow}>
+                <TextInput
+                  style={styles.input}
+                  value={outputName}
+                  onChangeText={setOutputName}
+                  placeholder="split"
+                  placeholderTextColor="#64748b"
+                  editable={!busy}
+                  autoCapitalize="none"
+                />
+                <Text style={styles.ext}>.pdf</Text>
+              </View>
+              <Text style={styles.modeHintSmall}>{nameHint()}</Text>
+            </View>
 
             {/* زر التنفيذ */}
             <TouchableOpacity
@@ -529,7 +545,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e293b',
     borderRadius: 14,
     padding: 14,
-    marginBottom: 18,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#293548',
   },
@@ -561,7 +577,21 @@ const styles = StyleSheet.create({
 
   modeHint: { color: '#cbd5e1', fontSize: 13, fontWeight: '600' },
   modeHintSmall: { color: '#94a3b8', fontSize: 12, marginTop: 8 },
+
+  optionsBox: {
+    backgroundColor: '#1e293b',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#293548',
+  },
+  optLabel: { color: '#e2e8f0', fontWeight: '800', fontSize: 13, marginBottom: 8 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  ext: { color: '#94a3b8', fontSize: 14, fontWeight: '700' },
+
   input: {
+    flex: 1,
     backgroundColor: '#0f172a',
     borderWidth: 1,
     borderColor: '#334155',
@@ -569,9 +599,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    marginTop: 8,
   },
 
   actionBtn: {
