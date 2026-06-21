@@ -10,11 +10,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import TrialBanner from '@/components/TrialBanner';
 
 /**
  * Home screen for the Smart PDF mobile app.
  * Shows a grid of offline tools that run fully on-device (no internet).
- * Online tools are temporarily removed and will be added back later.
+ * A trial banner at the top shows remaining trial days.
  */
 
 type Tool = {
@@ -44,7 +45,6 @@ export default function HomeScreen() {
   };
 
   const handleToolPress = (tool: Tool) => {
-    // الأدوات الجاهزة لها شاشات؛ البقية ستُضاف لاحقاً
     if (tool.id === 'merge') {
       router.push('/merge-pdf');
       return;
@@ -69,7 +69,6 @@ export default function HomeScreen() {
       router.push('/delete-pages');
       return;
     }
-    // مؤقتاً: بقية الأدوات قيد البناء
     console.log('Tool pressed (coming soon):', tool.id);
   };
 
@@ -112,6 +111,9 @@ export default function HomeScreen() {
             )}
           </View>
         </View>
+
+        {/* Trial banner */}
+        <TrialBanner />
 
         {/* Offline section */}
         <View style={styles.section}>

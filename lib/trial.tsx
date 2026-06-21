@@ -1,6 +1,5 @@
-import * as Application from 'expo-application';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import * as Application from 'expo-application';
 import React, {
   createContext,
   useCallback,
@@ -8,6 +7,7 @@ import React, {
   useEffect,
   useState,
 } from 'react';
+import { Platform } from 'react-native';
 
 /**
  * Trial system
@@ -43,7 +43,7 @@ const TrialContext = createContext<TrialState>({
   loading: true,
   isTrialActive: false,
   daysLeft: 0,
-  trialDays: 7,
+  trialDays: 1,
   checked: false,
   offline: false,
   refresh: async () => {},
