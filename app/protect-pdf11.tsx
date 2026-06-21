@@ -7,7 +7,6 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Linking,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -17,15 +16,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useTrial } from '@/lib/trial';
 
 /**
- * Protect PDF — premium tool (locked after the trial ends).
- * While the trial is active, it encrypts a PDF with a password.
- * After the trial expires, it shows an upgrade screen instead.
+ * Protect PDF — offline tool.
+ * Pick a PDF, set a password, and produce an encrypted copy.
+ * Uses @cantoo/pdf-lib (a pdf-lib fork that supports encryption).
+ * Encryption is applied via pdfDoc.encrypt({...}) BEFORE saving,
+ * and the file is saved with useObjectStreams: false.
+ * Saved (Android SAF) or shared (iOS). Runs fully on-device.
  */
-
-const WHATSAPP_URL = 'https://wa.me/972599601769';
 
 type PickedFile = {
   uri: string;
@@ -36,7 +35,6 @@ type PickedFile = {
 
 export default function ProtectPdfScreen() {
   const router = useRouter();
-  const { loading, isTrialActive } = useTrial();
   const [file, setFile] = useState<PickedFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [password, setPassword] = useState('');
@@ -47,6 +45,7 @@ export default function ProtectPdfScreen() {
   const readAsBase64 = async (uri: string) =>
     await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
 
+  // Uint8Array -> base64 (للحفظ بعد التشفير)
   const bytesToBase64 = (bytes: Uint8Array): string => {
     let binary = '';
     const chunk = 0x8000;
@@ -144,13 +143,19 @@ export default function ProtectPdfScreen() {
       const b64 = await readAsBase64(file.uri);
       const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
 
-      // @ts-ignore
+      // التشفير: يُستدعى كدالة قبل الحفظ
+      // @ts-ignore - encrypt متاحة في @cantoo/pdf-lib
       doc.encrypt({
-        userPassword: password,
-        ownerPassword: password,
-        permissions: { modifying: false, copying: false, annotating: false },
+        userPassword: password,   // لفتح الملف
+        ownerPassword: password,  // لكامل الصلاحيات
+        permissions: {
+          modifying: false,
+          copying: false,
+          annotating: false,
+        },
       });
 
+      // مهم: useObjectStreams: false ضروري لنجاح التشفير
       const bytes = await doc.save({ useObjectStreams: false });
       const encryptedBase64 = bytesToBase64(bytes);
 
@@ -173,33 +178,8 @@ export default function ProtectPdfScreen() {
     return `${(bytes / 1048576).toFixed(2)} MB`;
   };
 
-  const openWhatsApp = () => Linking.openURL(WHATSAPP_URL);
-
   const canRun =
     !!file && !busy && password.length >= 4 && password === confirm;
-
-  // أثناء فحص حالة التجربة
-  const renderLoading = () => (
-    <View style={styles.center}>
-      <ActivityIndicator color="#60a5fa" size="large" />
-      <Text style={styles.loadingText}>Checking access…</Text>
-    </View>
-  );
-
-  // شاشة القفل بعد انتهاء التجربة
-  const renderLocked = () => (
-    <View style={styles.lockedBox}>
-      <Text style={styles.lockIcon}>🔒</Text>
-      <Text style={styles.lockTitle}>Premium feature</Text>
-      <Text style={styles.lockDesc}>
-        Your free trial has ended. Protect PDF is a premium feature. Contact us to
-        unlock it and keep your documents secure.
-      </Text>
-      <TouchableOpacity style={styles.upgradeBtn} onPress={openWhatsApp}>
-        <Text style={styles.upgradeText}>💬 Contact us to upgrade</Text>
-      </TouchableOpacity>
-    </View>
-  );
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -215,111 +195,110 @@ export default function ProtectPdfScreen() {
           </Text>
         </View>
 
-        {loading ? (
-          renderLoading()
-        ) : !isTrialActive ? (
-          renderLocked()
-        ) : (
+        {/* Pick button */}
+        <TouchableOpacity style={styles.pickBtn} onPress={pickFile} disabled={busy}>
+          <Text style={styles.pickIcon}>📂</Text>
+          <Text style={styles.pickText}>
+            {file ? 'Pick a different PDF' : 'Tap to pick a PDF file'}
+          </Text>
+        </TouchableOpacity>
+
+        {file && (
           <>
-            {/* Pick button */}
-            <TouchableOpacity style={styles.pickBtn} onPress={pickFile} disabled={busy}>
-              <Text style={styles.pickIcon}>📂</Text>
-              <Text style={styles.pickText}>
-                {file ? 'Pick a different PDF' : 'Tap to pick a PDF file'}
+            {/* معلومات الملف */}
+            <View style={styles.fileCard}>
+              <View style={styles.fileRow}>
+                <TouchableOpacity onPress={clearFile} disabled={busy}>
+                  <Text style={styles.removeBtn}>✕</Text>
+                </TouchableOpacity>
+                <Text style={styles.fileSize}>
+                  {formatSize(file.size)} · {file.pageCount} pages
+                </Text>
+                <Text style={styles.fileName} numberOfLines={1}>
+                  {file.name}
+                </Text>
+              </View>
+            </View>
+
+            {/* كلمة المرور */}
+            <View style={styles.optionsBox}>
+              <Text style={styles.optLabel}>Password</Text>
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter password"
+                placeholderTextColor="#64748b"
+                secureTextEntry={!showPass}
+                editable={!busy}
+                autoCapitalize="none"
+              />
+
+              <Text style={[styles.optLabel, { marginTop: 12 }]}>
+                Confirm password
               </Text>
+              <TextInput
+                style={styles.input}
+                value={confirm}
+                onChangeText={setConfirm}
+                placeholder="Re-enter password"
+                placeholderTextColor="#64748b"
+                secureTextEntry={!showPass}
+                editable={!busy}
+                autoCapitalize="none"
+              />
+
+              <TouchableOpacity
+                style={styles.showRow}
+                onPress={() => setShowPass((s) => !s)}
+                disabled={busy}
+              >
+                <Text style={styles.showText}>
+                  {showPass ? '🙈 Hide password' : '👁️ Show password'}
+                </Text>
+              </TouchableOpacity>
+
+              {confirm.length > 0 && password !== confirm && (
+                <Text style={styles.warn}>Passwords do not match.</Text>
+              )}
+            </View>
+
+            {/* اسم الملف الناتج */}
+            <View style={styles.optionsBox}>
+              <Text style={styles.optLabel}>Output file name</Text>
+              <View style={styles.nameRow}>
+                <TextInput
+                  style={styles.input}
+                  value={outputName}
+                  onChangeText={setOutputName}
+                  placeholder="protected"
+                  placeholderTextColor="#64748b"
+                  editable={!busy}
+                  autoCapitalize="none"
+                />
+                <Text style={styles.ext}>.pdf</Text>
+              </View>
+            </View>
+
+            {/* زر الحماية */}
+            <TouchableOpacity
+              style={[styles.actionBtn, !canRun && styles.actionBtnDisabled]}
+              onPress={protect}
+              disabled={!canRun}
+            >
+              {busy ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.actionText}>
+                  🔒 Protect & {Platform.OS === 'android' ? 'Save' : 'Share'}
+                </Text>
+              )}
             </TouchableOpacity>
 
-            {file && (
-              <>
-                <View style={styles.fileCard}>
-                  <View style={styles.fileRow}>
-                    <TouchableOpacity onPress={clearFile} disabled={busy}>
-                      <Text style={styles.removeBtn}>✕</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.fileSize}>
-                      {formatSize(file.size)} · {file.pageCount} pages
-                    </Text>
-                    <Text style={styles.fileName} numberOfLines={1}>
-                      {file.name}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.optionsBox}>
-                  <Text style={styles.optLabel}>Password</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="Enter password"
-                    placeholderTextColor="#64748b"
-                    secureTextEntry={!showPass}
-                    editable={!busy}
-                    autoCapitalize="none"
-                  />
-                  <Text style={[styles.optLabel, { marginTop: 12 }]}>
-                    Confirm password
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    value={confirm}
-                    onChangeText={setConfirm}
-                    placeholder="Re-enter password"
-                    placeholderTextColor="#64748b"
-                    secureTextEntry={!showPass}
-                    editable={!busy}
-                    autoCapitalize="none"
-                  />
-                  <TouchableOpacity
-                    style={styles.showRow}
-                    onPress={() => setShowPass((s) => !s)}
-                    disabled={busy}
-                  >
-                    <Text style={styles.showText}>
-                      {showPass ? '🙈 Hide password' : '👁️ Show password'}
-                    </Text>
-                  </TouchableOpacity>
-                  {confirm.length > 0 && password !== confirm && (
-                    <Text style={styles.warn}>Passwords do not match.</Text>
-                  )}
-                </View>
-
-                <View style={styles.optionsBox}>
-                  <Text style={styles.optLabel}>Output file name</Text>
-                  <View style={styles.nameRow}>
-                    <TextInput
-                      style={styles.input}
-                      value={outputName}
-                      onChangeText={setOutputName}
-                      placeholder="protected"
-                      placeholderTextColor="#64748b"
-                      editable={!busy}
-                      autoCapitalize="none"
-                    />
-                    <Text style={styles.ext}>.pdf</Text>
-                  </View>
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.actionBtn, !canRun && styles.actionBtnDisabled]}
-                  onPress={protect}
-                  disabled={!canRun}
-                >
-                  {busy ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.actionText}>
-                      🔒 Protect & {Platform.OS === 'android' ? 'Save' : 'Share'}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-
-                <Text style={styles.note}>
-                  You'll need this password to open the PDF. Keep it safe — it can't be
-                  recovered.
-                </Text>
-              </>
-            )}
+            <Text style={styles.note}>
+              You'll need this password to open the PDF. Keep it safe — it can't be
+              recovered.
+            </Text>
           </>
         )}
       </ScrollView>
@@ -338,36 +317,6 @@ const styles = StyleSheet.create({
   backText: { color: '#60a5fa', fontSize: 16, fontWeight: '700' },
   title: { fontSize: 26, fontWeight: '800', color: '#ffffff' },
   subtitle: { fontSize: 13, color: '#94a3b8', marginTop: 6, lineHeight: 19 },
-
-  center: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
-  loadingText: { color: '#94a3b8', fontSize: 14, fontWeight: '600', marginTop: 14 },
-
-  lockedBox: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 28,
-    marginTop: 20,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  lockIcon: { fontSize: 56, marginBottom: 14 },
-  lockTitle: { color: '#ffffff', fontSize: 20, fontWeight: '800', marginBottom: 10 },
-  lockDesc: {
-    color: '#94a3b8',
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: 22,
-  },
-  upgradeBtn: {
-    backgroundColor: '#22c55e',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-  },
-  upgradeText: { color: '#ffffff', fontWeight: '800', fontSize: 15 },
 
   pickBtn: {
     borderWidth: 2,
