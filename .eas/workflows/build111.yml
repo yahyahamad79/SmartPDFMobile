@@ -1,8 +1,9 @@
 name: Build Android APK
 
-# يعمل يدوياً فقط (لا يبدأ تلقائياً عند الـ push) — لتوفير حصة البناء
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build_android:
