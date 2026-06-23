@@ -1,3 +1,7 @@
+// يجب أن يكون أول استيراد على الإطلاق — يزرع crypto.getRandomValues في البيئة
+// قبل تحميل أي كود تشفير (يحلّ خطأ "Native crypto module ... secure random number").
+import 'react-native-get-random-values';
+
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
