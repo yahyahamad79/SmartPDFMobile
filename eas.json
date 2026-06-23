@@ -15,9 +15,24 @@
         "image": "latest"
       }
     },
+    "beta": {
+      "distribution": "internal",
+      "autoIncrement": true,
+      "env": {
+        "APP_VARIANT": "beta"
+      },
+      "android": {
+        "buildType": "apk",
+        "image": "latest"
+      }
+    },
     "production": {
       "autoIncrement": true,
+      "env": {
+        "APP_VARIANT": "production"
+      },
       "android": {
+        "buildType": "apk",
         "image": "latest"
       }
     }
