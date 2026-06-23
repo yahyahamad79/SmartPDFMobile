@@ -16,14 +16,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import PremiumGate from '@/components/LockScreen';
 
 /**
- * Protect PDF — premium tool.
- * Every tool is premium now: the body is wrapped in <PremiumGate>,
- * which shows a spinner while checking, the tool while the trial is
- * active, and a lock screen (with WhatsApp upgrade) once it expires
- * or if clock tampering is detected.
+ * Protect PDF — encrypts a PDF with a password (on-device).
+ * Trial/premium gating is handled centrally in app/_layout.tsx
+ * (PremiumGuard), so this screen contains no trial logic at all.
  */
 
 type PickedFile = {
@@ -177,7 +174,7 @@ export default function ProtectPdfScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Header — always visible, outside the gate */}
+        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Text style={styles.backText}>‹ Back</Text>
@@ -188,108 +185,105 @@ export default function ProtectPdfScreen() {
           </Text>
         </View>
 
-        {/* The whole tool body is premium-gated */}
-        <PremiumGate title="Protect PDF">
-          {/* Pick button */}
-          <TouchableOpacity style={styles.pickBtn} onPress={pickFile} disabled={busy}>
-            <Text style={styles.pickIcon}>📂</Text>
-            <Text style={styles.pickText}>
-              {file ? 'Pick a different PDF' : 'Tap to pick a PDF file'}
-            </Text>
-          </TouchableOpacity>
+        {/* Pick button */}
+        <TouchableOpacity style={styles.pickBtn} onPress={pickFile} disabled={busy}>
+          <Text style={styles.pickIcon}>📂</Text>
+          <Text style={styles.pickText}>
+            {file ? 'Pick a different PDF' : 'Tap to pick a PDF file'}
+          </Text>
+        </TouchableOpacity>
 
-          {file && (
-            <>
-              <View style={styles.fileCard}>
-                <View style={styles.fileRow}>
-                  <TouchableOpacity onPress={clearFile} disabled={busy}>
-                    <Text style={styles.removeBtn}>✕</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.fileSize}>
-                    {formatSize(file.size)} · {file.pageCount} pages
-                  </Text>
-                  <Text style={styles.fileName} numberOfLines={1}>
-                    {file.name}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.optionsBox}>
-                <Text style={styles.optLabel}>Password</Text>
-                <TextInput
-                  style={styles.input}
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Enter password"
-                  placeholderTextColor="#64748b"
-                  secureTextEntry={!showPass}
-                  editable={!busy}
-                  autoCapitalize="none"
-                />
-                <Text style={[styles.optLabel, { marginTop: 12 }]}>
-                  Confirm password
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  value={confirm}
-                  onChangeText={setConfirm}
-                  placeholder="Re-enter password"
-                  placeholderTextColor="#64748b"
-                  secureTextEntry={!showPass}
-                  editable={!busy}
-                  autoCapitalize="none"
-                />
-                <TouchableOpacity
-                  style={styles.showRow}
-                  onPress={() => setShowPass((s) => !s)}
-                  disabled={busy}
-                >
-                  <Text style={styles.showText}>
-                    {showPass ? '🙈 Hide password' : '👁️ Show password'}
-                  </Text>
+        {file && (
+          <>
+            <View style={styles.fileCard}>
+              <View style={styles.fileRow}>
+                <TouchableOpacity onPress={clearFile} disabled={busy}>
+                  <Text style={styles.removeBtn}>✕</Text>
                 </TouchableOpacity>
-                {confirm.length > 0 && password !== confirm && (
-                  <Text style={styles.warn}>Passwords do not match.</Text>
-                )}
+                <Text style={styles.fileSize}>
+                  {formatSize(file.size)} · {file.pageCount} pages
+                </Text>
+                <Text style={styles.fileName} numberOfLines={1}>
+                  {file.name}
+                </Text>
               </View>
+            </View>
 
-              <View style={styles.optionsBox}>
-                <Text style={styles.optLabel}>Output file name</Text>
-                <View style={styles.nameRow}>
-                  <TextInput
-                    style={styles.input}
-                    value={outputName}
-                    onChangeText={setOutputName}
-                    placeholder="protected"
-                    placeholderTextColor="#64748b"
-                    editable={!busy}
-                    autoCapitalize="none"
-                  />
-                  <Text style={styles.ext}>.pdf</Text>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={[styles.actionBtn, !canRun && styles.actionBtnDisabled]}
-                onPress={protect}
-                disabled={!canRun}
-              >
-                {busy ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.actionText}>
-                    🔒 Protect & {Platform.OS === 'android' ? 'Save' : 'Share'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-
-              <Text style={styles.note}>
-                You'll need this password to open the PDF. Keep it safe — it can't be
-                recovered.
+            <View style={styles.optionsBox}>
+              <Text style={styles.optLabel}>Password</Text>
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter password"
+                placeholderTextColor="#64748b"
+                secureTextEntry={!showPass}
+                editable={!busy}
+                autoCapitalize="none"
+              />
+              <Text style={[styles.optLabel, { marginTop: 12 }]}>
+                Confirm password
               </Text>
-            </>
-          )}
-        </PremiumGate>
+              <TextInput
+                style={styles.input}
+                value={confirm}
+                onChangeText={setConfirm}
+                placeholder="Re-enter password"
+                placeholderTextColor="#64748b"
+                secureTextEntry={!showPass}
+                editable={!busy}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={styles.showRow}
+                onPress={() => setShowPass((s) => !s)}
+                disabled={busy}
+              >
+                <Text style={styles.showText}>
+                  {showPass ? '🙈 Hide password' : '👁️ Show password'}
+                </Text>
+              </TouchableOpacity>
+              {confirm.length > 0 && password !== confirm && (
+                <Text style={styles.warn}>Passwords do not match.</Text>
+              )}
+            </View>
+
+            <View style={styles.optionsBox}>
+              <Text style={styles.optLabel}>Output file name</Text>
+              <View style={styles.nameRow}>
+                <TextInput
+                  style={styles.input}
+                  value={outputName}
+                  onChangeText={setOutputName}
+                  placeholder="protected"
+                  placeholderTextColor="#64748b"
+                  editable={!busy}
+                  autoCapitalize="none"
+                />
+                <Text style={styles.ext}>.pdf</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.actionBtn, !canRun && styles.actionBtnDisabled]}
+              onPress={protect}
+              disabled={!canRun}
+            >
+              {busy ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.actionText}>
+                  🔒 Protect & {Platform.OS === 'android' ? 'Save' : 'Share'}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <Text style={styles.note}>
+              You'll need this password to open the PDF. Keep it safe — it can't be
+              recovered.
+            </Text>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
