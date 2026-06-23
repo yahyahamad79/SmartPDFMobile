@@ -1,8 +1,9 @@
 name: Build Android APK
 
-# يعمل يدوياً فقط (لا يبدأ تلقائياً عند الـ push) — لتوفير حصة البناء
+# يعمل يدوياً فقط (لا يبدأ تلقائياً عند الـ push) — لتوفير حصة البناء.
+# نحدّد triggers صراحةً ككائن حتى يقبله EAS Workflows.
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 jobs:
   build_android:
