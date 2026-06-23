@@ -1,0 +1,27 @@
+
+Run Server Via Mobile Direct:
+npx expo start (-c للتاكد من تفريغ الكاش وعدم وجود اخطاء) **** npx expo start ****
+========================================
+
+العمل على الموبايل مباشرة قبل انشاء اي نسخة
+------------------------------
+npx expo config --type public          # تأكد الإعداد سليم
+npx expo start -c                       # تأكد لا أخطاء
+-------------------------
+بعد نجاح العملية والنظام يعمل بنجاح ابني النسخة التجريبية 
+1-Beta Version:
+eas build -p android --profile beta
+-------------
+Beta Version with Message:
+eas build -p android --profile beta --message "Fix crypto in Protect"
+eas build -p android --profile beta --message "Beta 1.0.3 - crypto fix"
+or 
+eas build -p android --profile beta --no-wait
+--------------------------
+بعد نجاح النسخة التجريبية يتم انشاء النسخة الاصلية
+Onrginal Version:
+eas build -p android --profile production
+--------------
+Onrginal Version with Message:
+eas build -p android --profile production --no-wait
+========================================

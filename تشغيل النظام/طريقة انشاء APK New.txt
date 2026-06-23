@@ -1,0 +1,23 @@
+1:
+eas build -p android --profile preview
+2:
+eas workflow:run build.yml
+
+================
+طريقتان لتفعيل البناء التلقائي:
+أ) EAS Workflows (الأحدث والموصى به من Expo)
+تنشئ ملف workflow في مشروعك يخبر Expo:
+"ابنِ APK عند كل push على main". الملف يكون في .eas/workflows/ ويحوي شيئاً مثل:
+
+---
+name: Build APK on push
+on:
+  push:
+    branches: ['main']
+jobs:
+  build_android:
+    type: build
+    params:
+      platform: android
+      profile: preview
+---

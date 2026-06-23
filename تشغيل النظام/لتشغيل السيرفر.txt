@@ -1,0 +1,12 @@
+-------------------------
+Run Server...
+npx expo start
+or
+npx expo start -c
+-------------------------
+To Build Android Application..........
+eas build -p android --profile preview
+-------------------------
+
+-------------------------
+

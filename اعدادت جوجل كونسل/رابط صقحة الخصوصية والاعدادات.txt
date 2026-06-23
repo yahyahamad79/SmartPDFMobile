@@ -1,0 +1,11 @@
+Google Play Console Setting:
+==================================================
+رابط  صفحة الخصوصية
+"Privacy Policy URL"
+https://yahyahamad79.github.io/smartpdf-privacy/
+https://smartpdf-trial-server.onrender.com/privacy
+===================================================
+"Feature graphic"
+توضع فيه صورة العرض وهي Smart PDF
+===================================================
+

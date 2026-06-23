@@ -1,0 +1,24 @@
+npm install --global eas-cli 
+npx create-expo-app smartpdftrial 
+cd smartpdftrial 
+eas init --id 39e0302d-c730-41a1-b1e9-251a3baaab8f
+
+
+===================================
+
+name: Create Production Builds
+
+jobs:
+  build_android:
+    type: build # This job type creates a production build for Android
+    params:
+      platform: android
+  build_ios:
+    type: build # This job type creates a production build for iOS
+    params:
+      platform: ios
+
+===================================
+npx eas-cli@latest workflow:run create-production-builds.yml
+
+
