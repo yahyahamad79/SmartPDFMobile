@@ -1,0 +1,32 @@
+# .easignore — ملفات لا تُرفع لخوادم EAS Build (تقلّل حجم الأرشيف بشكل كبير)
+# EAS يعيد تثبيت node_modules بنفسه، فلا داعي لرفعها.
+
+node_modules/
+
+# مجلدات بناء واختبار مؤقتة
+.expo/
+dist/
+web-build/
+android/
+ios/
+
+# نسخ احتياطية وملفات النظام
+*.backup
+app.json.backup
+app_backup.json
+.DS_Store
+Thumbs.db
+
+# سجلّات
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# ملفات المحرر
+.vscode/
+.idea/
+
+# ملفات APK المحمّلة سابقاً (إن وُجدت داخل المشروع)
+*.apk
+*.aab

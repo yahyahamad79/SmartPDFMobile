@@ -1,2 +1,2 @@
-cmd /k "cd /d E:\MyProjects\EgninePDFToMobile\"
-npx expo start -c
+cmd /k "cd /d E:\MyProjects\SmartPDFMobile"
+
