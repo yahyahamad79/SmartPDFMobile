@@ -18,7 +18,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
-import { saveToArchive } from '@/lib/archive';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { saveToArchive, DIR_KEY } from '@/lib/archive';
 
 /**
  * Split PDF — offline tool.
@@ -242,17 +243,30 @@ export default function SplitPdfScreen() {
         await saveToArchive(b64, job.name, 'split');
       }
 
-      // ثم نطلب صلاحية المجلد ونكتب (على أندرويد)
+      // نستخدم المجلد المحفوظ في الإعدادات إن وُجد وكان صالحاً، وإلا نطلبه مرة
       let dirUri: string | null = null;
       if (Platform.OS === 'android') {
-        const perm =
-          await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-        if (!perm.granted) {
-          Alert.alert(t('cancelled'), t('noFolderSaved'));
-          setBusy(false);
-          return;
+        let saved = null;
+        try { saved = await AsyncStorage.getItem(DIR_KEY); } catch {}
+        if (saved) {
+          try {
+            await FileSystem.StorageAccessFramework.readDirectoryAsync(saved);
+            dirUri = saved;
+          } catch {
+            dirUri = null; // لم يعد صالحاً
+          }
         }
-        dirUri = perm.directoryUri;
+        if (!dirUri) {
+          const perm =
+            await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+          if (!perm.granted) {
+            Alert.alert(t('cancelled'), t('noFolderSaved'));
+            setBusy(false);
+            return;
+          }
+          dirUri = perm.directoryUri;
+          try { await AsyncStorage.setItem(DIR_KEY, dirUri); } catch {}
+        }
       }
 
       const outputs: string[] = [];
