@@ -2,7 +2,6 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { saveToArchive } from '@/lib/archive';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import React, { useState } from 'react';
@@ -20,6 +19,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useLang } from '@/lib/i18n';
 
 /**
  * Images to PDF — offline tool.
@@ -37,6 +38,7 @@ type PickedImage = {
 
 export default function ImagesToPdfScreen() {
   const router = useRouter();
+  const { t, isRTL } = useLang();
   const [images, setImages] = useState<PickedImage[]>([]);
   const [busy, setBusy] = useState(false);
   const [outputName, setOutputName] = useState('images');  // اسم الملف الناتج
@@ -63,7 +65,7 @@ export default function ImagesToPdfScreen() {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Permission needed', 'Please allow access to your photos.');
+        Alert.alert(t('imgPermT'), t('imgPerm'));
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -79,7 +81,7 @@ export default function ImagesToPdfScreen() {
       }));
       setImages((prev) => [...prev, ...picked]);
     } catch (e) {
-      Alert.alert('Error', 'Could not pick images from gallery.');
+      Alert.alert(t('error'), t('imgPickGalErr'));
     }
   };
 
@@ -99,7 +101,7 @@ export default function ImagesToPdfScreen() {
       }));
       setImages((prev) => [...prev, ...picked]);
     } catch (e) {
-      Alert.alert('Error', 'Could not pick image files.');
+      Alert.alert(t('error'), t('imgPickFileErr'));
     }
   };
 
@@ -150,7 +152,7 @@ export default function ImagesToPdfScreen() {
       const perm =
         await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Cancelled', 'No folder selected. File was not saved.');
+        Alert.alert(t('cancelled'), t('noFolderSaved'));
         return false;
       }
       const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
@@ -159,7 +161,7 @@ export default function ImagesToPdfScreen() {
         'application/pdf'
       );
       await FileSystem.writeAsStringAsync(destUri, base64, { encoding: 'base64' });
-      Alert.alert('Saved', `${fileName} saved successfully.`);
+      Alert.alert(t('done'), fileName);
       return true;
     } else {
       const outUri = FileSystem.cacheDirectory + fileName;
@@ -170,7 +172,7 @@ export default function ImagesToPdfScreen() {
           dialogTitle: 'Save or share PDF',
         });
       } else {
-        Alert.alert('Done', 'PDF saved to app storage.');
+        Alert.alert(t('done'), t('savedToArchive'));
       }
       return true;
     }
@@ -179,7 +181,7 @@ export default function ImagesToPdfScreen() {
   // التحويل عبر pdf-lib
   const convert = async () => {
     if (images.length === 0) {
-      Alert.alert('No images', 'Please add at least one image.');
+      Alert.alert(t('imgNoImagesT'), t('imgNoImages'));
       return;
     }
     setBusy(true);
@@ -263,7 +265,7 @@ export default function ImagesToPdfScreen() {
       await saveOutput(base64, finalFileName());
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'Unknown error';
-      Alert.alert('Conversion failed', msg);
+      Alert.alert(t('imgFailed'), msg);
       console.log('IMG2PDF ERROR:', e);
     } finally {
       setBusy(false);
@@ -276,9 +278,9 @@ export default function ImagesToPdfScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}>{isRTL ? '›' : '‹'} {t('back')}</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>🖼️ Images to PDF</Text>
+          <Text style={styles.title}>{t('imgTitle')}</Text>
           <Text style={styles.subtitle}>
             Pick JPG or PNG images, arrange them, and combine into one PDF — all on
             your device.
@@ -348,7 +350,7 @@ export default function ImagesToPdfScreen() {
                 </Text>
 
                 <TouchableOpacity onPress={() => removeImage(i)} disabled={busy}>
-                  <Text style={styles.removeBtn}>✕</Text>
+                  <Ionicons name="close" size={15} color="#f87171" />
                 </TouchableOpacity>
               </View>
             ))}
@@ -358,7 +360,7 @@ export default function ImagesToPdfScreen() {
         {/* Options: اسم الملف + التدوير + الترقيم */}
         {images.length > 0 && (
           <View style={styles.optionsBox}>
-            <Text style={styles.optLabel}>Output file name</Text>
+            <Text style={styles.optLabel}>{t('outputName')}</Text>
             <View style={styles.nameRow}>
               <TextInput
                 style={styles.input}

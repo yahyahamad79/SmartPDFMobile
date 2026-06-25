@@ -1,7 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import { saveToArchive } from '@/lib/archive';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument, degrees } from 'pdf-lib';
 import React, { useState } from 'react';
@@ -17,6 +16,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useLang } from '@/lib/i18n';
 
 /**
  * Rotate Pages — offline tool.
@@ -42,6 +43,7 @@ type RotateAction =
 
 export default function RotatePdfScreen() {
   const router = useRouter();
+  const { t, isRTL } = useLang();
   const [file, setFile] = useState<PickedFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [outputName, setOutputName] = useState('rotated');
@@ -70,7 +72,7 @@ export default function RotatePdfScreen() {
       });
       setOutputName((a.name || 'rotated').replace(/\.pdf$/i, '') + '_rotated');
     } catch (e) {
-      Alert.alert('Error', 'Could not read the PDF file.');
+      Alert.alert(t('error'), t('couldNotRead'));
     }
   };
 
@@ -110,7 +112,7 @@ export default function RotatePdfScreen() {
       const perm =
         await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Cancelled', 'No folder selected. File was not saved.');
+        Alert.alert(t('cancelled'), t('noFolderSaved'));
         return false;
       }
       const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
@@ -119,7 +121,7 @@ export default function RotatePdfScreen() {
         'application/pdf'
       );
       await FileSystem.writeAsStringAsync(destUri, base64, { encoding: 'base64' });
-      Alert.alert('Saved', `${fileName} saved successfully.`);
+      Alert.alert(t('done'), fileName);
       return true;
     } else {
       const outUri = FileSystem.cacheDirectory + fileName;
@@ -130,7 +132,7 @@ export default function RotatePdfScreen() {
           dialogTitle: 'Save or share rotated PDF',
         });
       } else {
-        Alert.alert('Done', 'Rotated PDF saved to app storage.');
+        Alert.alert(t('done'), t('savedToArchive'));
       }
       return true;
     }
@@ -139,11 +141,11 @@ export default function RotatePdfScreen() {
   // تطبيق التدوير وحفظ الملف
   const applyRotation = async (action: RotateAction) => {
     if (!file) {
-      Alert.alert('No file', 'Please pick a PDF file first.');
+      Alert.alert(t('noFile'), t('noFilePick'));
       return;
     }
     if (file.selected.length === 0) {
-      Alert.alert('No pages', 'Please select at least one page to rotate.');
+      Alert.alert(t('noFile'), t('rotateNoPages'));
       return;
     }
 
@@ -184,7 +186,7 @@ export default function RotatePdfScreen() {
       await saveOutput(out, finalFileName());
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'Unknown error';
-      Alert.alert('Rotate failed', msg);
+      Alert.alert(t('rotateFailed'), msg);
       console.log('ROTATE ERROR:', e);
     } finally {
       setBusy(false);
@@ -206,9 +208,9 @@ export default function RotatePdfScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}>{isRTL ? '›' : '‹'} {t('back')}</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>🔄 Rotate Pages</Text>
+          <Text style={styles.title}>{t('rotateTitle')}</Text>
           <Text style={styles.subtitle}>
             Pick a PDF, choose pages, and rotate them — switch between portrait and
             landscape, all on your device.
@@ -217,10 +219,8 @@ export default function RotatePdfScreen() {
 
         {/* Pick button */}
         <TouchableOpacity style={styles.pickBtn} onPress={pickFile} disabled={busy}>
-          <Text style={styles.pickIcon}>📂</Text>
-          <Text style={styles.pickText}>
-            {file ? 'Pick a different PDF' : 'Tap to pick a PDF file'}
-          </Text>
+          <Ionicons name="folder-open-outline" size={26} color="#60a5fa" style={{ marginBottom: 6 }} />
+          <Text style={styles.pickText}>{file ? t('pickPdfDiff') : t('pickPdf')}</Text>
         </TouchableOpacity>
 
         {file && (
@@ -229,7 +229,7 @@ export default function RotatePdfScreen() {
             <View style={styles.fileCard}>
               <View style={styles.fileRow}>
                 <TouchableOpacity onPress={clearFile} disabled={busy}>
-                  <Text style={styles.removeBtn}>✕</Text>
+                  <Ionicons name="close" size={15} color="#f87171" />
                 </TouchableOpacity>
                 <Text style={styles.fileSize}>
                   {formatSize(file.size)} · {file.pageCount} pages
@@ -279,7 +279,7 @@ export default function RotatePdfScreen() {
 
             {/* اسم الملف الناتج */}
             <View style={styles.optionsBox}>
-              <Text style={styles.optLabel}>Output file name</Text>
+              <Text style={styles.optLabel}>{t('outputName')}</Text>
               <View style={styles.nameRow}>
                 <TextInput
                   style={styles.input}

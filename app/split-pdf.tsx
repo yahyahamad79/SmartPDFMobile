@@ -1,7 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import { saveToArchive } from '@/lib/archive';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument } from 'pdf-lib';
 import React, { useState } from 'react';
@@ -17,6 +16,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useLang } from '@/lib/i18n';
 
 /**
  * Split PDF — offline tool.
@@ -37,6 +38,7 @@ type Mode = 'extract' | 'custom' | 'perPage' | 'ranges';
 
 export default function SplitPdfScreen() {
   const router = useRouter();
+  const { t, isRTL } = useLang();
   const [file, setFile] = useState<PickedFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<Mode>('extract');
@@ -114,7 +116,7 @@ export default function SplitPdfScreen() {
       });
       setOutputName((a.name || 'split').replace(/\.pdf$/i, '') + '_split');
     } catch (e) {
-      Alert.alert('Error', 'Could not read the PDF file.');
+      Alert.alert(t('error'), t('couldNotRead'));
     }
   };
 
@@ -177,19 +179,19 @@ export default function SplitPdfScreen() {
 
   const split = async () => {
     if (!file) {
-      Alert.alert('No file', 'Please pick a PDF file first.');
+      Alert.alert(t('noFile'), t('noFilePick'));
       return;
     }
 
     let customPages: number[] = [];
     if (mode === 'extract' && file.selected.length === 0) {
-      Alert.alert('No pages', 'Please select at least one page to extract.');
+      Alert.alert(t('noFile'), t('splitNoPages'));
       return;
     }
     if (mode === 'custom') {
       customPages = parseRangeText(rangeText, file.pageCount);
       if (customPages.length === 0) {
-        Alert.alert('Invalid range', 'Please enter a valid range, e.g. 1-5, 8, 11-13.');
+        Alert.alert(t('splitInvalidRangeT'), t('splitInvalidRange'));
         return;
       }
     }
@@ -197,7 +199,7 @@ export default function SplitPdfScreen() {
     if (mode === 'ranges') {
       size = parseInt(chunkSize, 10);
       if (!size || size < 1) {
-        Alert.alert('Invalid size', 'Please enter a valid pages-per-file number.');
+        Alert.alert(t('splitInvalidSizeT'), t('splitInvalidSize'));
         return;
       }
     }
@@ -236,7 +238,6 @@ export default function SplitPdfScreen() {
       for (const job of jobs) {
         const b64 = await buildPdfBase64(srcBase64, job.indices);
         built.push({ base64: b64, name: job.name });
-        await saveToArchive(b64, job.name, 'split');
       }
 
       // ثم نطلب صلاحية المجلد ونكتب (على أندرويد)
@@ -245,7 +246,7 @@ export default function SplitPdfScreen() {
         const perm =
           await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
         if (!perm.granted) {
-          Alert.alert('Cancelled', 'No folder selected. Nothing was saved.');
+          Alert.alert(t('cancelled'), t('noFolderSaved'));
           setBusy(false);
           return;
         }
@@ -259,7 +260,7 @@ export default function SplitPdfScreen() {
       }
 
       if (Platform.OS === 'android') {
-        Alert.alert('Saved', `${outputs.length} file(s) saved successfully.`);
+        Alert.alert(t('filesSaved'), String(outputs.length));
       } else {
         if (await Sharing.isAvailableAsync()) {
           for (const uri of outputs) {
@@ -269,12 +270,12 @@ export default function SplitPdfScreen() {
             });
           }
         } else {
-          Alert.alert('Done', `${outputs.length} file(s) saved to app storage.`);
+          Alert.alert(t('done'), t('savedToArchive'));
         }
       }
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'Unknown error';
-      Alert.alert('Split failed', msg);
+      Alert.alert(t('splitFailed'), msg);
       console.log('SPLIT ERROR:', e);
     } finally {
       setBusy(false);
@@ -315,9 +316,9 @@ export default function SplitPdfScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}>{isRTL ? '›' : '‹'} {t('back')}</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>✂️ Split PDF</Text>
+          <Text style={styles.title}>{t('splitTitle')}</Text>
           <Text style={styles.subtitle}>
             Extract pages, type a custom range, split each page, or break the PDF into
             fixed-size parts — all on your device.
@@ -325,10 +326,8 @@ export default function SplitPdfScreen() {
         </View>
 
         <TouchableOpacity style={styles.pickBtn} onPress={pickFile} disabled={busy}>
-          <Text style={styles.pickIcon}>📂</Text>
-          <Text style={styles.pickText}>
-            {file ? 'Pick a different PDF' : 'Tap to pick a PDF file'}
-          </Text>
+          <Ionicons name="folder-open-outline" size={26} color="#60a5fa" style={{ marginBottom: 6 }} />
+          <Text style={styles.pickText}>{file ? t('pickPdfDiff') : t('pickPdf')}</Text>
         </TouchableOpacity>
 
         {file && (
@@ -336,7 +335,7 @@ export default function SplitPdfScreen() {
             <View style={styles.fileCard}>
               <View style={styles.fileRow}>
                 <TouchableOpacity onPress={clearFile} disabled={busy}>
-                  <Text style={styles.removeBtn}>✕</Text>
+                  <Ionicons name="close" size={15} color="#f87171" />
                 </TouchableOpacity>
                 <Text style={styles.fileSize}>
                   {formatSize(file.size)} · {file.pageCount} pages
@@ -466,7 +465,7 @@ export default function SplitPdfScreen() {
             )}
 
             <View style={styles.optionsBox}>
-              <Text style={styles.optLabel}>Output file name</Text>
+              <Text style={styles.optLabel}>{t('outputName')}</Text>
               <View style={styles.nameRow}>
                 <TextInput
                   style={styles.input}

@@ -1,7 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import { saveToArchive } from '@/lib/archive';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument } from 'pdf-lib';
 import React, { useState } from 'react';
@@ -17,6 +16,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useLang } from '@/lib/i18n';
 
 /**
  * Delete Pages — offline tool.
@@ -35,6 +36,7 @@ type PickedFile = {
 
 export default function DeletePagesScreen() {
   const router = useRouter();
+  const { t, isRTL } = useLang();
   const [file, setFile] = useState<PickedFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [outputName, setOutputName] = useState('edited');
@@ -62,7 +64,7 @@ export default function DeletePagesScreen() {
       });
       setOutputName((a.name || 'edited').replace(/\.pdf$/i, '') + '_edited');
     } catch (e) {
-      Alert.alert('Error', 'Could not read the PDF file.');
+      Alert.alert(t('error'), t('couldNotRead'));
     }
   };
 
@@ -102,7 +104,7 @@ export default function DeletePagesScreen() {
       const perm =
         await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Cancelled', 'No folder selected. File was not saved.');
+        Alert.alert(t('cancelled'), t('noFolderSaved'));
         return false;
       }
       const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
@@ -111,7 +113,7 @@ export default function DeletePagesScreen() {
         'application/pdf'
       );
       await FileSystem.writeAsStringAsync(destUri, base64, { encoding: 'base64' });
-      Alert.alert('Saved', `${fileName} saved successfully.`);
+      Alert.alert(t('done'), fileName);
       return true;
     } else {
       const outUri = FileSystem.cacheDirectory + fileName;
@@ -122,7 +124,7 @@ export default function DeletePagesScreen() {
           dialogTitle: 'Save or share edited PDF',
         });
       } else {
-        Alert.alert('Done', 'Edited PDF saved to app storage.');
+        Alert.alert(t('done'), t('savedToArchive'));
       }
       return true;
     }
@@ -130,15 +132,15 @@ export default function DeletePagesScreen() {
 
   const deletePages = async () => {
     if (!file) {
-      Alert.alert('No file', 'Please pick a PDF file first.');
+      Alert.alert(t('noFile'), t('noFilePick'));
       return;
     }
     if (file.toDelete.length === 0) {
-      Alert.alert('No pages', 'Please select at least one page to delete.');
+      Alert.alert(t('noFile'), t('deleteNoPages'));
       return;
     }
     if (file.toDelete.length >= file.pageCount) {
-      Alert.alert('Cannot delete all', 'At least one page must remain.');
+      Alert.alert(t('deleteCannotAllT'), t('deleteMustRemain'));
       return;
     }
 
@@ -157,7 +159,7 @@ export default function DeletePagesScreen() {
       await saveOutput(out, finalFileName());
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'Unknown error';
-      Alert.alert('Delete failed', msg);
+      Alert.alert(t('deleteFailed'), msg);
       console.log('DELETE ERROR:', e);
     } finally {
       setBusy(false);
@@ -184,9 +186,9 @@ export default function DeletePagesScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}>{isRTL ? '›' : '‹'} {t('back')}</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>🗑️ Delete Pages</Text>
+          <Text style={styles.title}>{t('deleteTitle')}</Text>
           <Text style={styles.subtitle}>
             Pick a PDF, tap the pages you want to remove, and save the rest — all on
             your device.
@@ -195,10 +197,8 @@ export default function DeletePagesScreen() {
 
         {/* Pick button */}
         <TouchableOpacity style={styles.pickBtn} onPress={pickFile} disabled={busy}>
-          <Text style={styles.pickIcon}>📂</Text>
-          <Text style={styles.pickText}>
-            {file ? 'Pick a different PDF' : 'Tap to pick a PDF file'}
-          </Text>
+          <Ionicons name="folder-open-outline" size={26} color="#60a5fa" style={{ marginBottom: 6 }} />
+          <Text style={styles.pickText}>{file ? t('pickPdfDiff') : t('pickPdf')}</Text>
         </TouchableOpacity>
 
         {file && (
@@ -207,7 +207,7 @@ export default function DeletePagesScreen() {
             <View style={styles.fileCard}>
               <View style={styles.fileRow}>
                 <TouchableOpacity onPress={clearFile} disabled={busy}>
-                  <Text style={styles.removeBtn}>✕</Text>
+                  <Ionicons name="close" size={15} color="#f87171" />
                 </TouchableOpacity>
                 <Text style={styles.fileSize}>
                   {formatSize(file.size)} · {file.pageCount} pages
@@ -260,7 +260,7 @@ export default function DeletePagesScreen() {
 
             {/* اسم الملف الناتج */}
             <View style={styles.optionsBox}>
-              <Text style={styles.optLabel}>Output file name</Text>
+              <Text style={styles.optLabel}>{t('outputName')}</Text>
               <View style={styles.nameRow}>
                 <TextInput
                   style={styles.input}

@@ -1,7 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import { saveToArchive } from '@/lib/archive';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import React, { useState } from 'react';
@@ -17,6 +16,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useLang } from '@/lib/i18n';
 
 /**
  * Protect PDF — encrypts a PDF with a password (on-device).
@@ -33,6 +34,7 @@ type PickedFile = {
 
 export default function ProtectPdfScreen() {
   const router = useRouter();
+  const { t, isRTL } = useLang();
   const [file, setFile] = useState<PickedFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [password, setPassword] = useState('');
@@ -76,7 +78,7 @@ export default function ProtectPdfScreen() {
       });
       setOutputName((a.name || 'protected').replace(/\.pdf$/i, '') + '_protected');
     } catch (e) {
-      Alert.alert('Error', 'Could not read the PDF file.');
+      Alert.alert(t('error'), t('couldNotRead'));
     }
   };
 
@@ -95,7 +97,7 @@ export default function ProtectPdfScreen() {
       const perm =
         await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Cancelled', 'No folder selected. File was not saved.');
+        Alert.alert(t('cancelled'), t('noFolderSaved'));
         return false;
       }
       const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
@@ -104,7 +106,7 @@ export default function ProtectPdfScreen() {
         'application/pdf'
       );
       await FileSystem.writeAsStringAsync(destUri, base64, { encoding: 'base64' });
-      Alert.alert('Saved', `${fileName} saved successfully.`);
+      Alert.alert(t('done'), fileName);
       return true;
     } else {
       const outUri = FileSystem.cacheDirectory + fileName;
@@ -115,7 +117,7 @@ export default function ProtectPdfScreen() {
           dialogTitle: 'Save or share protected PDF',
         });
       } else {
-        Alert.alert('Done', 'Protected PDF saved to app storage.');
+        Alert.alert(t('done'), t('savedToArchive'));
       }
       return true;
     }
@@ -123,15 +125,15 @@ export default function ProtectPdfScreen() {
 
   const protect = async () => {
     if (!file) {
-      Alert.alert('No file', 'Please pick a PDF file first.');
+      Alert.alert(t('noFile'), t('noFilePick'));
       return;
     }
     if (password.length < 4) {
-      Alert.alert('Weak password', 'Password must be at least 4 characters.');
+      Alert.alert(t('protectWeakT'), t('protectWeak'));
       return;
     }
     if (password !== confirm) {
-      Alert.alert('Mismatch', 'Passwords do not match.');
+      Alert.alert(t('protectMismatchT'), t('protectMismatch'));
       return;
     }
 
@@ -150,14 +152,12 @@ export default function ProtectPdfScreen() {
       const bytes = await doc.save({ useObjectStreams: false });
       const encryptedBase64 = bytesToBase64(bytes);
 
-      const __saved = await saveToArchive(encryptedBase64, finalFileName(), 'protect', { protected: true });
-      if (__saved) { router.push({ pathname: '/result', params: { name: __saved.name, uri: __saved.uri, size: String(__saved.size), kind: __saved.kind } }); setPassword(''); setConfirm(''); setBusy(false); return; }
       await saveOutput(encryptedBase64, finalFileName());
       setPassword('');
       setConfirm('');
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'Unknown error';
-      Alert.alert('Protection failed', msg);
+      Alert.alert(t('protectFailed'), msg);
       console.log('PROTECT ERROR:', e);
     } finally {
       setBusy(false);
@@ -180,9 +180,9 @@ export default function ProtectPdfScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}>{isRTL ? '›' : '‹'} {t('back')}</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>🔒 Protect PDF</Text>
+          <Text style={styles.title}>{t('protectTitle')}</Text>
           <Text style={styles.subtitle}>
             Pick a PDF and set a password to encrypt it — all on your device.
           </Text>
@@ -190,10 +190,8 @@ export default function ProtectPdfScreen() {
 
         {/* Pick button */}
         <TouchableOpacity style={styles.pickBtn} onPress={pickFile} disabled={busy}>
-          <Text style={styles.pickIcon}>📂</Text>
-          <Text style={styles.pickText}>
-            {file ? 'Pick a different PDF' : 'Tap to pick a PDF file'}
-          </Text>
+          <Ionicons name="folder-open-outline" size={26} color="#60a5fa" style={{ marginBottom: 6 }} />
+          <Text style={styles.pickText}>{file ? t('pickPdfDiff') : t('pickPdf')}</Text>
         </TouchableOpacity>
 
         {file && (
@@ -201,7 +199,7 @@ export default function ProtectPdfScreen() {
             <View style={styles.fileCard}>
               <View style={styles.fileRow}>
                 <TouchableOpacity onPress={clearFile} disabled={busy}>
-                  <Text style={styles.removeBtn}>✕</Text>
+                  <Ionicons name="close" size={15} color="#f87171" />
                 </TouchableOpacity>
                 <Text style={styles.fileSize}>
                   {formatSize(file.size)} · {file.pageCount} pages
@@ -213,7 +211,7 @@ export default function ProtectPdfScreen() {
             </View>
 
             <View style={styles.optionsBox}>
-              <Text style={styles.optLabel}>Password</Text>
+              <Text style={styles.optLabel}>{t('protectPassword')}</Text>
               <TextInput
                 style={styles.input}
                 value={password}
@@ -225,7 +223,7 @@ export default function ProtectPdfScreen() {
                 autoCapitalize="none"
               />
               <Text style={[styles.optLabel, { marginTop: 12 }]}>
-                Confirm password
+                {t('protectConfirm')}
               </Text>
               <TextInput
                 style={styles.input}
@@ -252,7 +250,7 @@ export default function ProtectPdfScreen() {
             </View>
 
             <View style={styles.optionsBox}>
-              <Text style={styles.optLabel}>Output file name</Text>
+              <Text style={styles.optLabel}>{t('outputName')}</Text>
               <View style={styles.nameRow}>
                 <TextInput
                   style={styles.input}

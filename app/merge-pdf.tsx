@@ -1,7 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import { saveToArchive } from '@/lib/archive';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import React, { useState } from 'react';
@@ -18,6 +17,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useLang } from '@/lib/i18n';
 
 /**
  * Merge PDF — offline tool.
@@ -37,6 +38,7 @@ type PickedFile = {
 
 export default function MergePdfScreen() {
   const router = useRouter();
+  const { t, isRTL } = useLang();
   const [files, setFiles] = useState<PickedFile[]>([]);
   const [busy, setBusy] = useState(false);
   const [outputName, setOutputName] = useState('merged');   // اسم الملف الناتج
@@ -70,12 +72,12 @@ export default function MergePdfScreen() {
             selected: all,
           });
         } catch {
-          Alert.alert('Error', `Could not read pages of: ${a.name}`);
+          Alert.alert(t('error'), a.name);
         }
       }
       setFiles((prev) => [...prev, ...picked]);
     } catch (e) {
-      Alert.alert('Error', 'Could not pick files.');
+      Alert.alert(t('error'), t('mergeCouldNotPick'));
     }
   };
 
@@ -118,7 +120,7 @@ export default function MergePdfScreen() {
     const perm =
       await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('Cancelled', 'No folder selected. File was not saved.');
+      Alert.alert(t('cancelled'), t('noFolderSaved'));
       return false;
     }
     const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
@@ -142,12 +144,12 @@ export default function MergePdfScreen() {
 
   const mergeFiles = async () => {
     if (files.length < 2) {
-      Alert.alert('Need more files', 'Please pick at least two PDF files to merge.');
+      Alert.alert(t('mergeNeedMoreT'), t('mergeNeedTwo'));
       return;
     }
     const totalSelected = files.reduce((sum, f) => sum + f.selected.length, 0);
     if (totalSelected === 0) {
-      Alert.alert('No pages selected', 'Please select at least one page to merge.');
+      Alert.alert(t('mergeNoPagesT'), t('mergeNoPages'));
       return;
     }
 
@@ -188,7 +190,7 @@ export default function MergePdfScreen() {
 
       if (Platform.OS === 'android') {
         const ok = await saveAndroid(mergedBase64, fileName);
-        if (ok) Alert.alert('Saved', `${fileName} saved successfully.`);
+        if (ok) Alert.alert(t('done'), fileName);
       } else {
         const outUri = FileSystem.cacheDirectory + fileName;
         await FileSystem.writeAsStringAsync(outUri, mergedBase64, {
@@ -200,12 +202,12 @@ export default function MergePdfScreen() {
             dialogTitle: 'Save or share merged PDF',
           });
         } else {
-          Alert.alert('Done', 'Merged PDF saved to app storage.');
+          Alert.alert(t('done'), t('savedToArchive'));
         }
       }
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'Unknown error';
-      Alert.alert('Merge failed', msg);
+      Alert.alert(t('mergeFailed'), msg);
       console.log('MERGE ERROR:', e);
     } finally {
       setBusy(false);
@@ -227,9 +229,9 @@ export default function MergePdfScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}>{isRTL ? '›' : '‹'} {t('back')}</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>📑 Merge PDF</Text>
+          <Text style={styles.title}>{t('mergeTitle')}</Text>
           <Text style={styles.subtitle}>
             Pick PDFs, choose the pages you want from each, and combine them — all on
             your device.
@@ -238,8 +240,8 @@ export default function MergePdfScreen() {
 
         {/* Pick button */}
         <TouchableOpacity style={styles.pickBtn} onPress={pickFiles} disabled={busy}>
-          <Text style={styles.pickIcon}>📂</Text>
-          <Text style={styles.pickText}>Tap to pick PDF files</Text>
+          <Ionicons name="folder-open-outline" size={26} color="#60a5fa" style={{ marginBottom: 6 }} />
+          <Text style={styles.pickText}>{t('pickPdfFiles')}</Text>
         </TouchableOpacity>
 
         {/* File list */}
@@ -256,7 +258,7 @@ export default function MergePdfScreen() {
               <View key={f.uri} style={styles.fileCard}>
                 <View style={styles.fileRow}>
                   <TouchableOpacity onPress={() => removeFile(f.uri)} disabled={busy}>
-                    <Text style={styles.removeBtn}>✕</Text>
+                    <Ionicons name="close" size={15} color="#f87171" />
                   </TouchableOpacity>
                   <Text style={styles.fileSize}>{formatSize(f.size)}</Text>
                   <Text style={styles.fileName} numberOfLines={1}>
@@ -306,7 +308,7 @@ export default function MergePdfScreen() {
         {/* Options: اسم الملف + الترقيم */}
         {files.length > 0 && (
           <View style={styles.optionsBox}>
-            <Text style={styles.optLabel}>Output file name</Text>
+            <Text style={styles.optLabel}>{t('outputName')}</Text>
             <View style={styles.nameRow}>
               <TextInput
                 style={styles.input}
