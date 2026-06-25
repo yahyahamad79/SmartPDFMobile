@@ -55,7 +55,7 @@ type TrialState = {
 const TrialContext = createContext<TrialState>({
   loading: true,
   isTrialActive: false,
-  daysLeft: 0,
+  daysLeft: 7,
   trialDays: TRIAL_DAYS,
   checked: false,
   offline: false,
