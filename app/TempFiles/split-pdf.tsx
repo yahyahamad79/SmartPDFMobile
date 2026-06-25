@@ -1,7 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import { saveToArchive } from '@/lib/archive';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument } from 'pdf-lib';
 import React, { useState } from 'react';
@@ -236,7 +235,6 @@ export default function SplitPdfScreen() {
       for (const job of jobs) {
         const b64 = await buildPdfBase64(srcBase64, job.indices);
         built.push({ base64: b64, name: job.name });
-        await saveToArchive(b64, job.name, 'split');
       }
 
       // ثم نطلب صلاحية المجلد ونكتب (على أندرويد)

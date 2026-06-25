@@ -1,9 +1,8 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import { saveToArchive } from '@/lib/archive';
 import * as Sharing from 'expo-sharing';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, degrees } from 'pdf-lib';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -19,10 +18,11 @@ import {
 } from 'react-native';
 
 /**
- * Delete Pages — offline tool.
- * Pick a PDF, tap the pages you want to remove, and produce a new PDF
- * without them. Runs fully on-device with pdf-lib.
- * Saved (Android SAF) or shared (iOS). No internet required.
+ * Rotate Pages — offline tool.
+ * Pick a PDF, choose pages (or all), and rotate them.
+ * Quick actions: make landscape / make portrait (orientation-aware),
+ * plus manual 90° left / 90° right / 180°. Saved (Android) or shared (iOS).
+ * Runs fully on-device with pdf-lib. No internet required.
  */
 
 type PickedFile = {
@@ -30,14 +30,20 @@ type PickedFile = {
   name: string;
   size?: number;
   pageCount: number;
-  toDelete: number[]; // أرقام الصفحات المُراد حذفها (1-based)
+  selected: number[]; // الصفحات المختارة (1-based)
 };
 
-export default function DeletePagesScreen() {
+// نوع التدوير المطلوب
+type RotateAction =
+  | { kind: 'delta'; value: 90 | -90 | 180 } // تدوير نسبي
+  | { kind: 'toLandscape' }                   // اجعلها أفقية
+  | { kind: 'toPortrait' };                   // اجعلها عمودية
+
+export default function RotatePdfScreen() {
   const router = useRouter();
   const [file, setFile] = useState<PickedFile | null>(null);
   const [busy, setBusy] = useState(false);
-  const [outputName, setOutputName] = useState('edited');
+  const [outputName, setOutputName] = useState('rotated');
 
   const readAsBase64 = async (uri: string) =>
     await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
@@ -53,14 +59,15 @@ export default function DeletePagesScreen() {
       const a = result.assets[0];
       const b64 = await readAsBase64(a.uri);
       const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
+      const count = doc.getPageCount();
       setFile({
         uri: a.uri,
         name: a.name,
         size: a.size ?? undefined,
-        pageCount: doc.getPageCount(),
-        toDelete: [],
+        pageCount: count,
+        selected: Array.from({ length: count }, (_, i) => i + 1),
       });
-      setOutputName((a.name || 'edited').replace(/\.pdf$/i, '') + '_edited');
+      setOutputName((a.name || 'rotated').replace(/\.pdf$/i, '') + '_rotated');
     } catch (e) {
       Alert.alert('Error', 'Could not read the PDF file.');
     }
@@ -71,27 +78,27 @@ export default function DeletePagesScreen() {
   const togglePage = (page: number) => {
     setFile((prev) => {
       if (!prev) return prev;
-      const isMarked = prev.toDelete.includes(page);
-      const next = isMarked
-        ? prev.toDelete.filter((p) => p !== page)
-        : [...prev.toDelete, page].sort((a, b) => a - b);
-      return { ...prev, toDelete: next };
+      const isSel = prev.selected.includes(page);
+      const next = isSel
+        ? prev.selected.filter((p) => p !== page)
+        : [...prev.selected, page].sort((a, b) => a - b);
+      return { ...prev, selected: next };
     });
   };
 
-  const markAll = () =>
+  const selectAll = () =>
     setFile((prev) =>
       prev
-        ? { ...prev, toDelete: Array.from({ length: prev.pageCount }, (_, i) => i + 1) }
+        ? { ...prev, selected: Array.from({ length: prev.pageCount }, (_, i) => i + 1) }
         : prev
     );
 
-  const clearMarks = () =>
-    setFile((prev) => (prev ? { ...prev, toDelete: [] } : prev));
+  const clearPages = () =>
+    setFile((prev) => (prev ? { ...prev, selected: [] } : prev));
 
   const finalFileName = () => {
     let n = outputName.trim();
-    if (!n) n = 'edited';
+    if (!n) n = 'rotated';
     n = n.replace(/[\\/:*?"<>|]/g, '_');
     if (!n.toLowerCase().endsWith('.pdf')) n += '.pdf';
     return n;
@@ -119,26 +126,23 @@ export default function DeletePagesScreen() {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(outUri, {
           mimeType: 'application/pdf',
-          dialogTitle: 'Save or share edited PDF',
+          dialogTitle: 'Save or share rotated PDF',
         });
       } else {
-        Alert.alert('Done', 'Edited PDF saved to app storage.');
+        Alert.alert('Done', 'Rotated PDF saved to app storage.');
       }
       return true;
     }
   };
 
-  const deletePages = async () => {
+  // تطبيق التدوير وحفظ الملف
+  const applyRotation = async (action: RotateAction) => {
     if (!file) {
       Alert.alert('No file', 'Please pick a PDF file first.');
       return;
     }
-    if (file.toDelete.length === 0) {
-      Alert.alert('No pages', 'Please select at least one page to delete.');
-      return;
-    }
-    if (file.toDelete.length >= file.pageCount) {
-      Alert.alert('Cannot delete all', 'At least one page must remain.');
+    if (file.selected.length === 0) {
+      Alert.alert('No pages', 'Please select at least one page to rotate.');
       return;
     }
 
@@ -146,19 +150,41 @@ export default function DeletePagesScreen() {
     try {
       const b64 = await readAsBase64(file.uri);
       const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
+      const pages = doc.getPages();
 
-      // نحذف من الأعلى للأسفل حتى لا تتغير الفهارس أثناء الحذف
-      const sortedDesc = [...file.toDelete].sort((a, b) => b - a);
-      for (const p of sortedDesc) {
-        doc.removePage(p - 1); // 0-based
+      for (const p of file.selected) {
+        const page = pages[p - 1];
+        if (!page) continue;
+
+        const current = page.getRotation().angle % 360; // الزاوية الحالية
+        const { width, height } = page.getSize();
+        // ملاحظة: getSize يعيد الأبعاد قبل التدوير؛ نحدد الاتجاه الظاهر بدمج البُعد والزاوية
+        const rotatedSideways = current === 90 || current === 270;
+        const baseLandscape = width > height;
+        // الاتجاه الظاهر حالياً: أفقي إن (أفقي أصلاً وغير مائل) أو (عمودي أصلاً ومائل)
+        const isLandscapeNow = rotatedSideways ? !baseLandscape : baseLandscape;
+
+        let newAngle = current;
+
+        if (action.kind === 'delta') {
+          newAngle = (current + action.value + 360) % 360;
+        } else if (action.kind === 'toLandscape') {
+          // إن كانت عمودية الآن، ندوّرها 90° لتصبح أفقية؛ وإلا نتركها
+          if (!isLandscapeNow) newAngle = (current + 90) % 360;
+        } else if (action.kind === 'toPortrait') {
+          // إن كانت أفقية الآن، ندوّرها 90° لتصبح عمودية؛ وإلا نتركها
+          if (isLandscapeNow) newAngle = (current + 90) % 360;
+        }
+
+        page.setRotation(degrees(newAngle));
       }
 
       const out = await doc.saveAsBase64();
       await saveOutput(out, finalFileName());
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'Unknown error';
-      Alert.alert('Delete failed', msg);
-      console.log('DELETE ERROR:', e);
+      Alert.alert('Rotate failed', msg);
+      console.log('ROTATE ERROR:', e);
     } finally {
       setBusy(false);
     }
@@ -171,12 +197,7 @@ export default function DeletePagesScreen() {
     return `${(bytes / 1048576).toFixed(2)} MB`;
   };
 
-  const remaining = file ? file.pageCount - file.toDelete.length : 0;
-  const canRun =
-    !!file &&
-    !busy &&
-    file.toDelete.length > 0 &&
-    file.toDelete.length < file.pageCount;
+  const canRun = !!file && !busy && file.selected.length > 0;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -186,10 +207,10 @@ export default function DeletePagesScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Text style={styles.backText}>‹ Back</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>🗑️ Delete Pages</Text>
+          <Text style={styles.title}>🔄 Rotate Pages</Text>
           <Text style={styles.subtitle}>
-            Pick a PDF, tap the pages you want to remove, and save the rest — all on
-            your device.
+            Pick a PDF, choose pages, and rotate them — switch between portrait and
+            landscape, all on your device.
           </Text>
         </View>
 
@@ -218,37 +239,34 @@ export default function DeletePagesScreen() {
               </View>
             </View>
 
-            {/* اختيار الصفحات المراد حذفها */}
+            {/* اختيار الصفحات */}
             <View style={styles.listBox}>
               <View style={styles.pageTools}>
                 <Text style={styles.pageInfo}>
-                  {file.toDelete.length} to delete · {remaining} will remain
+                  {file.selected.length} / {file.pageCount} selected
                 </Text>
                 <View style={styles.pageToolsBtns}>
-                  <TouchableOpacity onPress={clearMarks} disabled={busy}>
+                  <TouchableOpacity onPress={clearPages} disabled={busy}>
                     <Text style={styles.toolBtnText}>None</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={markAll} disabled={busy}>
-                    <Text style={[styles.toolBtnText, { color: '#f87171' }]}>All</Text>
+                  <TouchableOpacity onPress={selectAll} disabled={busy}>
+                    <Text style={[styles.toolBtnText, { color: '#60a5fa' }]}>All</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-              <Text style={styles.hintSmall}>
-                Tap a page to mark it for deletion (turns red).
-              </Text>
               <View style={styles.pagesWrap}>
                 {Array.from({ length: file.pageCount }, (_, idx) => {
                   const page = idx + 1;
-                  const marked = file.toDelete.includes(page);
+                  const active = file.selected.includes(page);
                   return (
                     <TouchableOpacity
                       key={page}
-                      style={[styles.pageBtn, marked && styles.pageBtnMarked]}
+                      style={[styles.pageBtn, active && styles.pageBtnActive]}
                       onPress={() => togglePage(page)}
                       disabled={busy}
                     >
                       <Text
-                        style={[styles.pageBtnText, marked && styles.pageBtnTextMarked]}
+                        style={[styles.pageBtnText, active && styles.pageBtnTextActive]}
                       >
                         {page}
                       </Text>
@@ -266,7 +284,7 @@ export default function DeletePagesScreen() {
                   style={styles.input}
                   value={outputName}
                   onChangeText={setOutputName}
-                  placeholder="edited"
+                  placeholder="rotated"
                   placeholderTextColor="#64748b"
                   editable={!busy}
                   autoCapitalize="none"
@@ -275,24 +293,59 @@ export default function DeletePagesScreen() {
               </View>
             </View>
 
-            {/* زر الحذف */}
-            <TouchableOpacity
-              style={[styles.actionBtn, !canRun && styles.actionBtnDisabled]}
-              onPress={deletePages}
-              disabled={!canRun}
-            >
-              {busy ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.actionText}>
-                  🗑️ Delete & {Platform.OS === 'android' ? 'Save' : 'Share'}
-                  {file.toDelete.length > 0 ? ` (${file.toDelete.length})` : ''}
-                </Text>
-              )}
-            </TouchableOpacity>
+            {/* الخياران الرئيسيان: أفقي / عمودي */}
+            <View style={styles.bigRow}>
+              <TouchableOpacity
+                style={[styles.bigBtn, !canRun && styles.btnDisabled]}
+                onPress={() => applyRotation({ kind: 'toLandscape' })}
+                disabled={!canRun}
+              >
+                <Text style={styles.bigIcon}>🖥️</Text>
+                <Text style={styles.bigText}>Make Landscape</Text>
+                <Text style={styles.bigSub}>Portrait → Landscape</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.bigBtn, !canRun && styles.btnDisabled]}
+                onPress={() => applyRotation({ kind: 'toPortrait' })}
+                disabled={!canRun}
+              >
+                <Text style={styles.bigIcon}>📄</Text>
+                <Text style={styles.bigText}>Make Portrait</Text>
+                <Text style={styles.bigSub}>Landscape → Portrait</Text>
+              </TouchableOpacity>
+            </View>
 
-            {file.toDelete.length >= file.pageCount && file.pageCount > 0 && (
-              <Text style={styles.warn}>At least one page must remain.</Text>
+            {/* تدوير يدوي */}
+            <Text style={styles.manualLabel}>Or rotate manually:</Text>
+            <View style={styles.manualRow}>
+              <TouchableOpacity
+                style={[styles.manualBtn, !canRun && styles.btnDisabled]}
+                onPress={() => applyRotation({ kind: 'delta', value: -90 })}
+                disabled={!canRun}
+              >
+                <Text style={styles.manualText}>↺ 90°</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.manualBtn, !canRun && styles.btnDisabled]}
+                onPress={() => applyRotation({ kind: 'delta', value: 90 })}
+                disabled={!canRun}
+              >
+                <Text style={styles.manualText}>↻ 90°</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.manualBtn, !canRun && styles.btnDisabled]}
+                onPress={() => applyRotation({ kind: 'delta', value: 180 })}
+                disabled={!canRun}
+              >
+                <Text style={styles.manualText}>⤧ 180°</Text>
+              </TouchableOpacity>
+            </View>
+
+            {busy && (
+              <View style={styles.busyRow}>
+                <ActivityIndicator color="#60a5fa" />
+                <Text style={styles.busyText}>Processing…</Text>
+              </View>
             )}
           </>
         )}
@@ -302,7 +355,6 @@ export default function DeletePagesScreen() {
 }
 
 const NAVY = '#1F4E78';
-const RED = '#dc2626';
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0f172a' },
@@ -345,7 +397,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e293b',
     borderRadius: 14,
     padding: 14,
-    marginBottom: 16,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: '#293548',
   },
@@ -353,12 +405,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 10,
   },
   pageInfo: { color: '#94a3b8', fontSize: 12, fontWeight: '700' },
   pageToolsBtns: { flexDirection: 'row', gap: 16 },
   toolBtnText: { color: '#94a3b8', fontSize: 12, fontWeight: '700' },
-  hintSmall: { color: '#64748b', fontSize: 11, marginBottom: 10 },
 
   pagesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pageBtn: {
@@ -372,9 +423,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pageBtnMarked: { backgroundColor: RED, borderColor: '#f87171' },
+  pageBtnActive: { backgroundColor: NAVY, borderColor: '#60a5fa' },
   pageBtnText: { color: '#94a3b8', fontSize: 13, fontWeight: '700' },
-  pageBtnTextMarked: { color: '#ffffff' },
+  pageBtnTextActive: { color: '#ffffff' },
 
   optionsBox: {
     backgroundColor: '#1e293b',
@@ -400,13 +451,34 @@ const styles = StyleSheet.create({
   },
   ext: { color: '#94a3b8', fontSize: 14, fontWeight: '700' },
 
-  actionBtn: {
-    backgroundColor: RED,
+  bigRow: { flexDirection: 'row', gap: 12, marginBottom: 18 },
+  bigBtn: {
+    flex: 1,
+    backgroundColor: NAVY,
+    borderRadius: 14,
+    paddingVertical: 18,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2a5a8a',
+  },
+  bigIcon: { fontSize: 26, marginBottom: 6 },
+  bigText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  bigSub: { color: '#cbd5e1', fontSize: 10.5, marginTop: 3 },
+  btnDisabled: { opacity: 0.5 },
+
+  manualLabel: { color: '#94a3b8', fontSize: 13, fontWeight: '700', marginBottom: 10 },
+  manualRow: { flexDirection: 'row', gap: 10 },
+  manualBtn: {
+    flex: 1,
+    backgroundColor: '#1e293b',
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
   },
-  actionBtnDisabled: { opacity: 0.5 },
-  actionText: { color: '#fff', fontWeight: '800', fontSize: 15 },
-  warn: { color: '#f87171', fontSize: 12, fontWeight: '700', textAlign: 'center', marginTop: 12 },
+  manualText: { color: '#e2e8f0', fontWeight: '800', fontSize: 15 },
+
+  busyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 18 },
+  busyText: { color: '#94a3b8', fontSize: 13, fontWeight: '600' },
 });

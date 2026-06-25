@@ -1,6 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
+import { saveToArchive } from '@/lib/archive';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument, degrees } from 'pdf-lib';
 import React, { useState } from 'react';

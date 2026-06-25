@@ -1,6 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
+import { saveToArchive } from '@/lib/archive';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import React, { useState } from 'react';
@@ -149,6 +150,8 @@ export default function ProtectPdfScreen() {
       const bytes = await doc.save({ useObjectStreams: false });
       const encryptedBase64 = bytesToBase64(bytes);
 
+      const __saved = await saveToArchive(encryptedBase64, finalFileName(), 'protect', { protected: true });
+      if (__saved) { router.push({ pathname: '/result', params: { name: __saved.name, uri: __saved.uri, size: String(__saved.size), kind: __saved.kind } }); setPassword(''); setConfirm(''); setBusy(false); return; }
       await saveOutput(encryptedBase64, finalFileName());
       setPassword('');
       setConfirm('');
