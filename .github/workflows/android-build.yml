@@ -1,6 +1,5 @@
 name: Build Android APK (GitHub Servers)
 
-# يعمل يدوياً فقط عند الضغط على زر التشغيل في GitHub لتوفير الدقائق
 on:
   workflow_dispatch:
 
@@ -9,45 +8,37 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. جلب كود المشروع من مستودع الـ GitHub الخاص بك
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. إعداد بيئة تشغيل Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: 'npm'
 
-      # 3. إعداد بيئة الجافا (JDK) الضرورية لبناء الأندرويد
       - name: Setup Java (JDK)
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      # 4. إعداد أدوات الأندرويد (Android SDK) محلياً على سيرفر جيت هاب
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 5. تثبيت حزم وأدوات الـ Expo و EAS
       - name: Setup Expo and EAS
         uses: expo/expo-github-action@v8
         with:
           expo-version: latest
           eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }} # يحتاج ربط مفتاح الأمان لحسابك
+          token: ${{ secrets.EXPO_TOKEN }}
 
-      # 6. تثبيت مكتبات المشروع (node_modules)
       - name: Install dependencies
         run: npm ci
 
-      # 7. أمر بناء الـ APK محلياً على سيرفر جيت هاب (لا يستهلك حصة Expo السحابية)
       - name: Build APK Locally on GitHub
         run: eas build --platform android --profile preview --local
 
-      # 8. رفع ملف الـ APK الناتج لتتمكن من تحميله مباشرة من جيت هاب
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
