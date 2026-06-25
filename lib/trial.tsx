@@ -33,7 +33,7 @@ const SERVER_URL = 'https://smartpdf-trial-server.onrender.com';
 const REQUEST_TIMEOUT_MS = 60000;
 
 // مدة التجربة ثابتة في الكود (لا تأتي من الخادم)
-const TRIAL_DAYS = 0;
+const TRIAL_DAYS = 7;
 
 // مفاتيح التخزين الآمن
 const K_START = 'spdf_trial_start_v3';      // تاريخ بدء التجربة (ms)
