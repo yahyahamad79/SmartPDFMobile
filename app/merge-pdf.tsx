@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
+import { saveToArchive } from '@/lib/archive';
 
 /**
  * Merge PDF — offline tool.
@@ -187,6 +188,8 @@ export default function MergePdfScreen() {
 
       const mergedBase64 = await mergedPdf.saveAsBase64();
       const fileName = finalFileName();
+      const __s = await saveToArchive(mergedBase64, fileName, 'merge');
+      if (__s) { router.push({ pathname: '/result', params: { name: __s.name, uri: __s.uri, size: String(__s.size), kind: __s.kind } }); setBusy(false); return; }
 
       if (Platform.OS === 'android') {
         const ok = await saveAndroid(mergedBase64, fileName);

@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
+import { saveToArchive } from '@/lib/archive';
 
 /**
  * Split PDF — offline tool.
@@ -238,6 +239,7 @@ export default function SplitPdfScreen() {
       for (const job of jobs) {
         const b64 = await buildPdfBase64(srcBase64, job.indices);
         built.push({ base64: b64, name: job.name });
+        await saveToArchive(b64, job.name, 'split');
       }
 
       // ثم نطلب صلاحية المجلد ونكتب (على أندرويد)

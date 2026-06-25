@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
+import { saveToArchive } from '@/lib/archive';
 
 /**
  * Images to PDF — offline tool.
@@ -262,6 +263,8 @@ export default function ImagesToPdfScreen() {
       }
 
       const base64 = await pdfDoc.saveAsBase64();
+      const __s = await saveToArchive(base64, finalFileName(), 'img2pdf');
+      if (__s) { router.push({ pathname: '/result', params: { name: __s.name, uri: __s.uri, size: String(__s.size), kind: __s.kind } }); setBusy(false); return; }
       await saveOutput(base64, finalFileName());
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'Unknown error';

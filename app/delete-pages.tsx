@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
+import { saveToArchive } from '@/lib/archive';
 
 /**
  * Delete Pages — offline tool.
@@ -156,6 +157,8 @@ export default function DeletePagesScreen() {
       }
 
       const out = await doc.saveAsBase64();
+      const __s = await saveToArchive(out, finalFileName(), 'delete');
+      if (__s) { router.push({ pathname: '/result', params: { name: __s.name, uri: __s.uri, size: String(__s.size), kind: __s.kind } }); setBusy(false); return; }
       await saveOutput(out, finalFileName());
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'Unknown error';

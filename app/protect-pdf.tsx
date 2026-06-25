@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
+import { saveToArchive } from '@/lib/archive';
 
 /**
  * Protect PDF — encrypts a PDF with a password (on-device).
@@ -152,6 +153,8 @@ export default function ProtectPdfScreen() {
       const bytes = await doc.save({ useObjectStreams: false });
       const encryptedBase64 = bytesToBase64(bytes);
 
+      const __s = await saveToArchive(encryptedBase64, finalFileName(), 'protect', { protected: true });
+      if (__s) { router.push({ pathname: '/result', params: { name: __s.name, uri: __s.uri, size: String(__s.size), kind: __s.kind } }); setPassword(''); setConfirm(''); setBusy(false); return; }
       await saveOutput(encryptedBase64, finalFileName());
       setPassword('');
       setConfirm('');
