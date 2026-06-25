@@ -236,59 +236,34 @@ export default function SplitPdfScreen() {
       }
 
       // نبني كل الملفات في الذاكرة أولاً
-      const built: { base64: string; name: string }[] = [];
+      let firstSaved: any = null;
+      let savedCount = 0;
       for (const job of jobs) {
         const b64 = await buildPdfBase64(srcBase64, job.indices);
-        built.push({ base64: b64, name: job.name });
-        await saveToArchive(b64, job.name, 'split');
-      }
-
-      // نستخدم المجلد المحفوظ في الإعدادات إن وُجد وكان صالحاً، وإلا نطلبه مرة
-      let dirUri: string | null = null;
-      if (Platform.OS === 'android') {
-        let saved = null;
-        try { saved = await AsyncStorage.getItem(DIR_KEY); } catch {}
-        if (saved) {
-          try {
-            await FileSystem.StorageAccessFramework.readDirectoryAsync(saved);
-            dirUri = saved;
-          } catch {
-            dirUri = null; // لم يعد صالحاً
-          }
-        }
-        if (!dirUri) {
-          const perm =
-            await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-          if (!perm.granted) {
-            Alert.alert(t('cancelled'), t('noFolderSaved'));
-            setBusy(false);
-            return;
-          }
-          dirUri = perm.directoryUri;
-          try { await AsyncStorage.setItem(DIR_KEY, dirUri); } catch {}
+        const __s = await saveToArchive(b64, job.name, 'split');
+        if (__s) {
+          savedCount++;
+          if (!firstSaved) firstSaved = __s;
         }
       }
 
-      const outputs: string[] = [];
-      for (const b of built) {
-        const uri = await outputOne(b.base64, b.name, dirUri);
-        outputs.push(uri);
+      // مثل شاشة الدمج: الملفات أُرشفت بالفعل، نوجّه لشاشة النتيجة
+      // (التحميل من هناك يحترم المجلد المحدّد في الإعدادات).
+      if (firstSaved) {
+        router.push({
+          pathname: '/result',
+          params: {
+            name: firstSaved.name,
+            uri: firstSaved.uri,
+            size: String(firstSaved.size),
+            kind: firstSaved.kind,
+            count: String(savedCount),
+          },
+        });
+        setBusy(false);
+        return;
       }
 
-      if (Platform.OS === 'android') {
-        Alert.alert(t('filesSaved'), String(outputs.length));
-      } else {
-        if (await Sharing.isAvailableAsync()) {
-          for (const uri of outputs) {
-            await Sharing.shareAsync(uri, {
-              mimeType: 'application/pdf',
-              dialogTitle: 'Save or share split PDF',
-            });
-          }
-        } else {
-          Alert.alert(t('done'), t('savedToArchive'));
-        }
-      }
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'Unknown error';
       Alert.alert(t('splitFailed'), msg);
