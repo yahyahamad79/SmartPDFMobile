@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
   previewHeader: { alignItems: 'center', gap: 12, paddingTop: 44, paddingHorizontal: 16, paddingBottom: 12 },
   previewCloseBtn: { padding: 4 },
   previewTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  previewBody: { flex: 1, margin: 12, borderRadius: 12, overflow: 'hidden', backgroundColor: '#0b1220' },
+  previewBody: { flex: 1, margin: 12, backgroundColor: '#0b1220' },
   previewControls: { justifyContent: 'center', paddingBottom: 32, paddingTop: 8 },
   previewRotate: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#1d4ed8', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 28 },
   previewRotateText: { color: '#fff', fontSize: 14, fontWeight: '700' },

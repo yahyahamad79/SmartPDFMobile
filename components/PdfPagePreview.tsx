@@ -75,6 +75,16 @@ export function isPdfPreviewAvailable(): boolean {
 }
 
 export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel }: Props) {
+  const [box, setBox] = React.useState({ width: 0, height: 0 });
+
+  // المكتبة تتطلب مساراً محلياً بصيغة file://. نضمن ذلك.
+  const normalizedUri = React.useMemo(() => {
+    if (!uri) return uri;
+    if (uri.startsWith('file://') || uri.startsWith('content://')) return uri;
+    if (uri.startsWith('/')) return 'file://' + uri;
+    return uri;
+  }, [uri]);
+
   const fallback = (
     <View style={styles.fallback}>
       <Ionicons name="document-text-outline" size={54} color="#475569" />
@@ -88,21 +98,24 @@ export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel }: 
 
   return (
     <PdfErrorBoundary fallback={fallback}>
-      <View style={[styles.wrap, { transform: [{ rotate: `${rotationDeg}deg` }] }]}>
-        <PdfRendererView
-          source={uri}
-          style={styles.renderer}
-          distanceBetweenPages={12}
-          maxZoom={4}
-          singlePage={false}
-        />
+      <View style={styles.wrap} onLayout={(e) => setBox(e.nativeEvent.layout)}>
+        {box.width > 0 && box.height > 0 ? (
+          <PdfRendererView
+            source={normalizedUri}
+            style={{ width: box.width, height: box.height, backgroundColor: '#0b1220' }}
+            distanceBetweenPages={12}
+            maxZoom={4}
+            singlePage={false}
+            onPageChange={() => { /* تحميل ناجح */ }}
+          />
+        ) : null}
       </View>
     </PdfErrorBoundary>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, width: '100%', backgroundColor: '#0b1220' },
+  wrap: { flex: 1, width: '100%', height: '100%', backgroundColor: '#0b1220', alignItems: 'stretch', justifyContent: 'center' },
   renderer: { flex: 1, backgroundColor: '#0b1220' },
   fallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b1220', gap: 12 },
   fallbackText: { color: '#64748b', fontSize: 14, fontWeight: '600' },
