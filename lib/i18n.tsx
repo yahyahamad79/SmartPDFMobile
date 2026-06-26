@@ -176,6 +176,11 @@ const STRINGS: Record<string, { ar: string; en: string }> = {
   deleteFailed: { ar: 'فشل الحذف', en: 'Delete failed' },
   protectFailed: { ar: 'فشل الحماية', en: 'Protection failed' },
   filesSaved: { ar: 'تم حفظ الملفات', en: 'Files saved' },
+  // فلاتر الصور
+  filterNone: { ar: 'أصلي', en: 'Original' },
+  filterGray: { ar: 'رمادي', en: 'Grayscale' },
+  filterBw: { ar: 'أبيض/أسود', en: 'B&W' },
+  filterContrast: { ar: 'تباين', en: 'Contrast' },
 };
 
 type LangState = {

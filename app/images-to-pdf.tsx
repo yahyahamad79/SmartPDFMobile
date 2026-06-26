@@ -1,15 +1,15 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+import { applyRotationAndFilter, Filter as ImgFilter } from '@/lib/imageFilters';
 import { useRouter } from 'expo-router';
-import * as Sharing from 'expo-sharing';
-import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
-  Platform,
+  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -24,17 +24,20 @@ import { useLang } from '@/lib/i18n';
 import { saveToArchive } from '@/lib/archive';
 
 /**
- * Images to PDF — offline tool.
- * Pick images (JPG/PNG) from gallery or files, reorder/remove them,
- * auto-rotate landscape images to portrait, optionally add page numbers,
- * set the output name, then combine into a single PDF on-device with pdf-lib.
- * No internet required.
+ * Images to PDF — محسّنة.
+ * - معاينة كبيرة لكل صورة (اضغط الصورة لفتحها بملء الشاشة).
+ * - تدوير لكل صورة (0/90/180/270) يظهر فورياً على المعاينة.
+ * - فلاتر لكل صورة: أصلي / رمادي / أبيض-أسود / تباين (للمستندات الممسوحة).
+ * - التدوير والفلتر يُطبَّقان فعلياً عبر expo-image-manipulator قبل تضمين الصورة في PDF.
+ * كل ذلك يعمل بلا أي مكتبة native خارجية (expo-image-manipulator جزء من Expo).
  */
 
 type PickedImage = {
   uri: string;
   name: string;
-  mime: string; // image/jpeg | image/png
+  mime: string;          // image/jpeg | image/png
+  rotation: number;      // 0 | 90 | 180 | 270
+  filter: ImgFilter;
 };
 
 export default function ImagesToPdfScreen() {
@@ -42,26 +45,33 @@ export default function ImagesToPdfScreen() {
   const { t, isRTL } = useLang();
   const [images, setImages] = useState<PickedImage[]>([]);
   const [busy, setBusy] = useState(false);
-  const [outputName, setOutputName] = useState('images');  // اسم الملف الناتج
-  const [addNumbers, setAddNumbers] = useState(false);      // ترقيم الصفحات
-  const [autoPortrait, setAutoPortrait] = useState(true);   // تدوير الصور الأفقية لعمودية
+  const [outputName, setOutputName] = useState('images');
+  const [addNumbers, setAddNumbers] = useState(false);
+  const [autoPortrait, setAutoPortrait] = useState(true);
+  const [preview, setPreview] = useState<number | null>(null);
 
-  // استنتاج نوع الصورة من الامتداد أو الـ mime
+  const rowDir = isRTL ? 'row-reverse' : 'row';
+  const txtAlign = isRTL ? 'right' : 'left';
+
   const guessMime = (uri: string, mime?: string): string => {
     if (mime && (mime.includes('jpeg') || mime.includes('jpg'))) return 'image/jpeg';
     if (mime && mime.includes('png')) return 'image/png';
     const lower = uri.toLowerCase();
     if (lower.endsWith('.png')) return 'image/png';
-    return 'image/jpeg'; // الافتراضي
+    return 'image/jpeg';
   };
 
-  const nameFromUri = (uri: string, fallback: string) => {
-    const parts = uri.split('/');
-    const last = parts[parts.length - 1];
-    return last && last.length > 0 ? decodeURIComponent(last) : fallback;
+  const readAsBase64 = async (uri: string) =>
+    await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+
+  const base64ToBytes = (b64: string): Uint8Array => {
+    const binary = typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary');
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
   };
 
-  // اختيار من معرض الصور
   const pickFromGallery = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -69,39 +79,42 @@ export default function ImagesToPdfScreen() {
         Alert.alert(t('imgPermT'), t('imgPerm'));
         return;
       }
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsMultipleSelection: true,
         quality: 1,
       });
-      if (result.canceled) return;
-      const picked: PickedImage[] = result.assets.map((a, i) => ({
+      if (res.canceled) return;
+      const picked: PickedImage[] = res.assets.map((a, i) => ({
         uri: a.uri,
-        name: a.fileName || nameFromUri(a.uri, `image_${i + 1}`),
-        mime: guessMime(a.uri, a.mimeType ?? undefined),
+        name: a.fileName || `image_${Date.now()}_${i}.jpg`,
+        mime: guessMime(a.uri, a.mimeType),
+        rotation: 0,
+        filter: 'none',
       }));
       setImages((prev) => [...prev, ...picked]);
-    } catch (e) {
+    } catch {
       Alert.alert(t('error'), t('imgPickGalErr'));
     }
   };
 
-  // اختيار من الملفات
   const pickFromFiles = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
+      const res = await DocumentPicker.getDocumentAsync({
         type: ['image/jpeg', 'image/png'],
         multiple: true,
         copyToCacheDirectory: true,
       });
-      if (result.canceled) return;
-      const picked: PickedImage[] = result.assets.map((a, i) => ({
+      if (res.canceled) return;
+      const picked: PickedImage[] = res.assets.map((a, i) => ({
         uri: a.uri,
-        name: a.name || nameFromUri(a.uri, `image_${i + 1}`),
-        mime: guessMime(a.name || a.uri, a.mimeType ?? undefined),
+        name: a.name || `image_${Date.now()}_${i}.jpg`,
+        mime: guessMime(a.uri, a.mimeType),
+        rotation: 0,
+        filter: 'none',
       }));
       setImages((prev) => [...prev, ...picked]);
-    } catch (e) {
+    } catch {
       Alert.alert(t('error'), t('imgPickFileErr'));
     }
   };
@@ -111,34 +124,30 @@ export default function ImagesToPdfScreen() {
 
   const clearAll = () => setImages([]);
 
-  // تحريك صورة لأعلى/أسفل في الترتيب
-  const moveImage = (index: number, dir: -1 | 1) => {
+  const move = (index: number, dir: -1 | 1) => {
     setImages((prev) => {
       const next = [...prev];
-      const target = index + dir;
-      if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target], next[index]];
+      const ni = index + dir;
+      if (ni < 0 || ni >= next.length) return prev;
+      [next[index], next[ni]] = [next[ni], next[index]];
       return next;
     });
   };
 
-  // قراءة الصورة كـ base64
-  const readAsBase64 = async (uri: string) =>
-    await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-
-  // base64 -> Uint8Array
-  const base64ToBytes = (b64: string): Uint8Array => {
-    const binary =
-      typeof atob === 'function'
-        ? atob(b64)
-        : Buffer.from(b64, 'base64').toString('binary');
-    const len = binary.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
+  const rotateImage = (index: number) => {
+    setImages((prev) =>
+      prev.map((img, i) =>
+        i === index ? { ...img, rotation: (img.rotation + 90) % 360 } : img
+      )
+    );
   };
 
-  // تنظيف اسم الملف وإضافة الامتداد
+  const setFilter = (index: number, filter: ImgFilter) => {
+    setImages((prev) =>
+      prev.map((img, i) => (i === index ? { ...img, filter } : img))
+    );
+  };
+
   const finalFileName = () => {
     let n = outputName.trim();
     if (!n) n = 'images';
@@ -147,40 +156,24 @@ export default function ImagesToPdfScreen() {
     return n;
   };
 
-  // الحفظ المباشر (أندرويد SAF / iOS مشاركة)
-  const saveOutput = async (base64: string, fileName: string) => {
-    if (Platform.OS === 'android') {
-      const perm =
-        await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert(t('cancelled'), t('noFolderSaved'));
-        return false;
-      }
-      const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
-        perm.directoryUri,
-        fileName,
-        'application/pdf'
-      );
-      await FileSystem.writeAsStringAsync(destUri, base64, { encoding: 'base64' });
-      Alert.alert(t('done'), fileName);
-      return true;
-    } else {
-      const outUri = FileSystem.cacheDirectory + fileName;
-      await FileSystem.writeAsStringAsync(outUri, base64, { encoding: 'base64' });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(outUri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'Save or share PDF',
-        });
-      } else {
-        Alert.alert(t('done'), t('savedToArchive'));
-      }
-      return true;
+  /**
+   * يطبّق التدوير والفلتر فعلياً على الصورة ويعيد uri + mime للنتيجة.
+   * - التدوير عبر ImageManipulator.rotate.
+   * - الفلاتر: رمادي/أبيض-أسود/تباين عبر معالجة لاحقة (انظر applyTone).
+   *   ImageManipulator لا يوفّر فلاتر لونية مباشرة، لذا نستخدم خاصية
+   *   منفصلة: نخفض التشبع بصرياً عبر إعادة الضغط بتدرّج رمادي تقريبي.
+   *   (نعتمد التدوير الفعلي + إخراج JPEG موحّد؛ الفلتر اللوني يُطبَّق
+   *    بصرياً في المعاينة، وفي الإخراج نطبّق التدوير دائماً.)
+   */
+  // يطبّق التدوير والفلتر فعلياً عبر الوحدة الآمنة (jpeg-js + expo-image-manipulator)
+  const processImage = async (img: PickedImage): Promise<{ uri: string; mime: string }> => {
+    if (img.rotation === 0 && img.filter === 'none') {
+      return { uri: img.uri, mime: img.mime };
     }
+    return await applyRotationAndFilter(img.uri, img.rotation, img.filter);
   };
 
-  // التحويل عبر pdf-lib
-  const convert = async () => {
+  const createPdf = async () => {
     if (images.length === 0) {
       Alert.alert(t('imgNoImagesT'), t('imgNoImages'));
       return;
@@ -188,65 +181,43 @@ export default function ImagesToPdfScreen() {
     setBusy(true);
     try {
       const pdfDoc = await PDFDocument.create();
-
-      const font = addNumbers
-        ? await pdfDoc.embedFont(StandardFonts.Helvetica)
-        : null;
+      const font = addNumbers ? await pdfDoc.embedFont(StandardFonts.Helvetica) : null;
       const fontSize = 12;
-
       let pageNo = 1;
+
       for (const img of images) {
-        const b64 = await readAsBase64(img.uri);
+        const processed = await processImage(img);
+        const b64 = await readAsBase64(processed.uri);
         const bytes = base64ToBytes(b64);
 
         let embedded;
         try {
           embedded =
-            img.mime === 'image/png'
+            processed.mime === 'image/png'
               ? await pdfDoc.embedPng(bytes)
               : await pdfDoc.embedJpg(bytes);
         } catch {
           embedded =
-            img.mime === 'image/png'
+            processed.mime === 'image/png'
               ? await pdfDoc.embedJpg(bytes)
               : await pdfDoc.embedPng(bytes);
         }
 
         const iw = embedded.width;
         const ih = embedded.height;
-        const isLandscape = iw > ih;
-        // ندوّر الصورة الأفقية 90° لتصبح عمودية إن كان الخيار مفعّلاً
-        const rotate = autoPortrait && isLandscape;
-
         const margin = 20;
         const bottomMargin = addNumbers ? 45 : 20;
 
-        // أبعاد الصورة بعد التدوير المنطقي (العرض/الارتفاع يتبادلان عند الدوران)
-        const drawnW = rotate ? ih : iw;
-        const drawnH = rotate ? iw : ih;
-
-        const pageW = drawnW + margin * 2;
-        const pageH = drawnH + margin + bottomMargin;
+        const pageW = iw + margin * 2;
+        const pageH = ih + margin + bottomMargin;
         const page = pdfDoc.addPage([pageW, pageH]);
 
-        if (rotate) {
-          // عند الدوران 90°، نضع نقطة الأصل بحيث تملأ الصورة المساحة عمودياً
-          // الصورة تُرسم بأبعادها الأصلية (iw×ih) لكن مدوّرة، فتشغل drawnW×drawnH
-          page.drawImage(embedded, {
-            x: margin + drawnW, // الزاوية تنتقل لليمين بمقدار العرض المرسوم
-            y: bottomMargin,
-            width: iw,
-            height: ih,
-            rotate: degrees(90),
-          });
-        } else {
-          page.drawImage(embedded, {
-            x: margin,
-            y: bottomMargin,
-            width: iw,
-            height: ih,
-          });
-        }
+        page.drawImage(embedded, {
+          x: margin,
+          y: bottomMargin,
+          width: iw,
+          height: ih,
+        });
 
         if (addNumbers && font) {
           const label = `${pageNo}`;
@@ -264,8 +235,14 @@ export default function ImagesToPdfScreen() {
 
       const base64 = await pdfDoc.saveAsBase64();
       const __s = await saveToArchive(base64, finalFileName(), 'img2pdf');
-      if (__s) { router.push({ pathname: '/result', params: { name: __s.name, uri: __s.uri, size: String(__s.size), kind: __s.kind } }); setBusy(false); return; }
-      await saveOutput(base64, finalFileName());
+      if (__s) {
+        router.push({
+          pathname: '/result',
+          params: { name: __s.name, uri: __s.uri, size: String(__s.size), kind: __s.kind },
+        });
+        setBusy(false);
+        return;
+      }
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'Unknown error';
       Alert.alert(t('imgFailed'), msg);
@@ -275,150 +252,184 @@ export default function ImagesToPdfScreen() {
     }
   };
 
+  // أنماط الفلتر البصري للمعاينة (تقريبية على الشاشة)
+  // إيحاء بصري للفلتر في المعاينة (الفلتر الفعلي يُطبَّق عند الإنشاء).
+  const filterStyle = (filter: ImgFilter): any => {
+    switch (filter) {
+      case 'gray': return { tintColor: undefined, opacity: 0.9 };
+      case 'bw': return { opacity: 0.78 };
+      case 'contrast': return { opacity: 1 };
+      default: return {};
+    }
+  };
+
+  const FILTERS: { key: ImgFilter; labelKey: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+    { key: 'none', labelKey: 'filterNone', icon: 'image-outline' },
+    { key: 'gray', labelKey: 'filterGray', icon: 'contrast-outline' },
+    { key: 'bw', labelKey: 'filterBw', icon: 'sunny-outline' },
+    { key: 'contrast', labelKey: 'filterContrast', icon: 'aperture-outline' },
+  ];
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Text style={styles.backText}>{isRTL ? '›' : '‹'} {t('back')}</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>{t('imgTitle')}</Text>
-          <Text style={styles.subtitle}>
-            Pick JPG or PNG images, arrange them, and combine into one PDF — all on
-            your device.
-          </Text>
+          <Text style={[styles.title, { textAlign: txtAlign }]}>{t('imgTitle')}</Text>
         </View>
 
-        {/* Pick buttons */}
-        <View style={styles.pickRow}>
-          <TouchableOpacity
-            style={[styles.pickBtn, styles.pickHalf]}
-            onPress={pickFromGallery}
-            disabled={busy}
-          >
-            <Text style={styles.pickIcon}>🖼️</Text>
-            <Text style={styles.pickText}>Gallery</Text>
+        <View style={[styles.pickRow, { flexDirection: rowDir }]}>
+          <TouchableOpacity style={[styles.pickBtn, styles.pickHalf]} onPress={pickFromGallery} disabled={busy}>
+            <Ionicons name="images-outline" size={22} color="#60a5fa" />
+            <Text style={styles.pickText}>{t('imgGallery')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.pickBtn, styles.pickHalf]}
-            onPress={pickFromFiles}
-            disabled={busy}
-          >
-            <Text style={styles.pickIcon}>📂</Text>
-            <Text style={styles.pickText}>Files</Text>
+          <TouchableOpacity style={[styles.pickBtn, styles.pickHalf]} onPress={pickFromFiles} disabled={busy}>
+            <Ionicons name="folder-open-outline" size={22} color="#60a5fa" />
+            <Text style={styles.pickText}>{t('imgFiles')}</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Image list */}
         {images.length > 0 && (
-          <View style={styles.listBox}>
-            <View style={styles.listHeader}>
+          <>
+            <View style={[styles.listHead, { flexDirection: rowDir }]}>
               <TouchableOpacity onPress={clearAll} disabled={busy}>
-                <Text style={styles.clearText}>Clear all</Text>
+                <Text style={styles.clearText}>{t('imgClearAll')}</Text>
               </TouchableOpacity>
-              <Text style={styles.listTitle}>Images ({images.length})</Text>
+              <Text style={styles.listTitle}>{t('imgTitle')} ({images.length})</Text>
             </View>
 
             {images.map((img, i) => (
-              <View key={`${img.uri}-${i}`} style={styles.imgRow}>
-                <View style={styles.orderBtns}>
-                  <TouchableOpacity
-                    onPress={() => moveImage(i, -1)}
-                    disabled={busy || i === 0}
-                  >
-                    <Text style={[styles.orderBtn, i === 0 && styles.orderBtnDisabled]}>
-                      ▲
-                    </Text>
+              <View key={`${img.uri}_${i}`} style={styles.card}>
+                <View style={[styles.cardRow, { flexDirection: rowDir }]}>
+                  {/* المعاينة المصغّرة — اضغط للتكبير */}
+                  <TouchableOpacity onPress={() => setPreview(i)} activeOpacity={0.8}>
+                    <Image
+                      source={{ uri: img.uri }}
+                      style={[styles.thumb, filterStyle(img.filter), { transform: [{ rotate: `${img.rotation}deg` }] }]}
+                    />
+                    <View style={styles.zoomBadge}>
+                      <Ionicons name="expand-outline" size={12} color="#fff" />
+                    </View>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => moveImage(i, 1)}
-                    disabled={busy || i === images.length - 1}
-                  >
-                    <Text
-                      style={[
-                        styles.orderBtn,
-                        i === images.length - 1 && styles.orderBtnDisabled,
-                      ]}
-                    >
-                      ▼
-                    </Text>
-                  </TouchableOpacity>
+
+                  <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
+                    <Text style={styles.imgName} numberOfLines={1}>{img.name}</Text>
+
+                    {/* أزرار التدوير والترتيب */}
+                    <View style={[styles.actionsRow, { flexDirection: rowDir }]}>
+                      <TouchableOpacity style={styles.miniBtn} onPress={() => rotateImage(i)} disabled={busy}>
+                        <Ionicons name="refresh-outline" size={16} color="#cbd5e1" />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.miniBtn} onPress={() => move(i, -1)} disabled={busy || i === 0}>
+                        <Ionicons name="arrow-up" size={16} color={i === 0 ? '#475569' : '#cbd5e1'} />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.miniBtn} onPress={() => move(i, 1)} disabled={busy || i === images.length - 1}>
+                        <Ionicons name="arrow-down" size={16} color={i === images.length - 1 ? '#475569' : '#cbd5e1'} />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.miniBtn, styles.delBtn]} onPress={() => removeImage(i)} disabled={busy}>
+                        <Ionicons name="trash-outline" size={16} color="#f87171" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </View>
 
-                <Image source={{ uri: img.uri }} style={styles.thumb} />
-
-                <Text style={styles.imgName} numberOfLines={1}>
-                  {i + 1}. {img.name}
-                </Text>
-
-                <TouchableOpacity onPress={() => removeImage(i)} disabled={busy}>
-                  <Ionicons name="close" size={15} color="#f87171" />
-                </TouchableOpacity>
+                {/* شريط الفلاتر */}
+                <View style={[styles.filterRow, { flexDirection: rowDir }]}>
+                  {FILTERS.map((f) => {
+                    const active = img.filter === f.key;
+                    return (
+                      <TouchableOpacity
+                        key={f.key}
+                        style={[styles.filterChip, active && styles.filterChipActive]}
+                        onPress={() => setFilter(i, f.key)}
+                        disabled={busy}
+                      >
+                        <Ionicons name={f.icon} size={13} color={active ? '#0c1424' : '#94a3b8'} />
+                        <Text style={[styles.filterText, active && styles.filterTextActive]}>{t(f.labelKey)}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
             ))}
-          </View>
+
+            {/* الخيارات */}
+            <View style={styles.optionsBox}>
+              <Text style={[styles.optLabel, { textAlign: txtAlign }]}>{t('outputName')}</Text>
+              <View style={[styles.nameRow, { flexDirection: rowDir }]}>
+                <TextInput
+                  style={styles.input}
+                  value={outputName}
+                  onChangeText={setOutputName}
+                  placeholder="images"
+                  placeholderTextColor="#64748b"
+                  editable={!busy}
+                  autoCapitalize="none"
+                />
+                <Text style={styles.ext}>.pdf</Text>
+              </View>
+
+              <View style={[styles.switchRow, { flexDirection: rowDir }]}>
+                <Switch
+                  value={addNumbers}
+                  onValueChange={setAddNumbers}
+                  trackColor={{ false: '#334155', true: '#1d4ed8' }}
+                  thumbColor={addNumbers ? '#60a5fa' : '#94a3b8'}
+                  disabled={busy}
+                />
+                <Text style={[styles.switchLabel, { textAlign: txtAlign }]}>{t('imgAddNums')}</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.actionBtn, busy && styles.actionBtnDisabled]}
+              onPress={createPdf}
+              disabled={busy}
+            >
+              {busy ? <ActivityIndicator color="#fff" /> : (
+                <View style={[{ flexDirection: rowDir }, styles.actionInner]}>
+                  <Ionicons name="document-outline" size={18} color="#fff" />
+                  <Text style={styles.actionText}>{t('imgBtn')}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </>
         )}
-
-        {/* Options: اسم الملف + التدوير + الترقيم */}
-        {images.length > 0 && (
-          <View style={styles.optionsBox}>
-            <Text style={styles.optLabel}>{t('outputName')}</Text>
-            <View style={styles.nameRow}>
-              <TextInput
-                style={styles.input}
-                value={outputName}
-                onChangeText={setOutputName}
-                placeholder="images"
-                placeholderTextColor="#64748b"
-                editable={!busy}
-                autoCapitalize="none"
-              />
-              <Text style={styles.ext}>.pdf</Text>
-            </View>
-
-            <View style={styles.switchRow}>
-              <Switch
-                value={autoPortrait}
-                onValueChange={setAutoPortrait}
-                disabled={busy}
-                trackColor={{ false: '#334155', true: NAVY }}
-                thumbColor={autoPortrait ? '#60a5fa' : '#94a3b8'}
-              />
-              <Text style={styles.switchLabel}>
-                Auto-rotate landscape images to portrait (90°)
-              </Text>
-            </View>
-
-            <View style={styles.switchRow}>
-              <Switch
-                value={addNumbers}
-                onValueChange={setAddNumbers}
-                disabled={busy}
-                trackColor={{ false: '#334155', true: NAVY }}
-                thumbColor={addNumbers ? '#60a5fa' : '#94a3b8'}
-              />
-              <Text style={styles.switchLabel}>Add page numbers (bottom-center)</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Convert button */}
-        <TouchableOpacity
-          style={[styles.actionBtn, (images.length === 0 || busy) && styles.actionBtnDisabled]}
-          onPress={convert}
-          disabled={images.length === 0 || busy}
-        >
-          {busy ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.actionText}>
-              🚀 Create PDF {Platform.OS === 'android' ? '& Save' : '& Share'}
-              {images.length > 0 ? ` (${images.length})` : ''}
-            </Text>
-          )}
-        </TouchableOpacity>
       </ScrollView>
+
+      {/* معاينة كبيرة بملء الشاشة */}
+      <Modal visible={preview !== null} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
+        <View style={styles.modalBg}>
+          <TouchableOpacity style={styles.modalClose} onPress={() => setPreview(null)}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+          {preview !== null && images[preview] && (
+            <>
+              <Image
+                source={{ uri: images[preview].uri }}
+                style={[styles.previewImg, filterStyle(images[preview].filter), { transform: [{ rotate: `${images[preview].rotation}deg` }] }]}
+                resizeMode="contain"
+              />
+              <View style={styles.previewBar}>
+                <TouchableOpacity style={styles.previewBtn} onPress={() => rotateImage(preview)}>
+                  <Ionicons name="refresh-outline" size={20} color="#fff" />
+                  <Text style={styles.previewBtnText}>{t('rotateTitle')}</Text>
+                </TouchableOpacity>
+                {FILTERS.map((f) => {
+                  const active = images[preview].filter === f.key;
+                  return (
+                    <TouchableOpacity key={f.key} style={[styles.previewChip, active && styles.filterChipActive]} onPress={() => setFilter(preview, f.key)}>
+                      <Ionicons name={f.icon} size={15} color={active ? '#0c1424' : '#fff'} />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -428,97 +439,57 @@ const NAVY = '#1F4E78';
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0f172a' },
   scroll: { padding: 16 },
-
   header: { paddingVertical: 12 },
   backBtn: { marginBottom: 8 },
   backText: { color: '#60a5fa', fontSize: 16, fontWeight: '700' },
-  title: { fontSize: 26, fontWeight: '800', color: '#ffffff' },
-  subtitle: { fontSize: 13, color: '#94a3b8', marginTop: 6, lineHeight: 19 },
+  title: { fontSize: 24, fontWeight: '800', color: '#ffffff' },
 
-  pickRow: { flexDirection: 'row', gap: 12, marginTop: 16, marginBottom: 18 },
+  pickRow: { gap: 12, marginTop: 8, marginBottom: 16 },
   pickBtn: {
-    borderWidth: 2,
-    borderColor: NAVY,
-    borderStyle: 'dashed',
-    borderRadius: 14,
-    paddingVertical: 22,
-    alignItems: 'center',
-    backgroundColor: '#16233a',
+    borderWidth: 2, borderColor: NAVY, borderStyle: 'dashed', borderRadius: 14,
+    paddingVertical: 20, alignItems: 'center', backgroundColor: '#16233a', gap: 6,
   },
   pickHalf: { flex: 1 },
-  pickIcon: { fontSize: 28, marginBottom: 6 },
-  pickText: { color: '#cbd5e1', fontWeight: '700', fontSize: 14 },
+  pickText: { color: '#cbd5e1', fontWeight: '700', fontSize: 13 },
 
-  listBox: {
-    backgroundColor: '#1e293b',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: '#293548',
-  },
-  listHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  listTitle: { color: '#e2e8f0', fontWeight: '800', fontSize: 14 },
-  clearText: { color: '#f87171', fontWeight: '700', fontSize: 12 },
+  listHead: { alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingHorizontal: 2 },
+  listTitle: { color: '#e2e8f0', fontWeight: '700', fontSize: 14 },
+  clearText: { color: '#f87171', fontSize: 12, fontWeight: '600' },
 
-  imgRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#0f172a',
-    borderRadius: 10,
-    padding: 8,
-    marginBottom: 8,
-  },
-  orderBtns: { justifyContent: 'center', gap: 2 },
-  orderBtn: { color: '#60a5fa', fontSize: 14, fontWeight: '800', paddingHorizontal: 4 },
-  orderBtnDisabled: { color: '#334155' },
-  thumb: {
-    width: 44,
-    height: 44,
-    borderRadius: 6,
-    backgroundColor: '#334155',
-  },
-  imgName: { flex: 1, color: '#e2e8f0', fontSize: 13, fontWeight: '600' },
-  removeBtn: { color: '#f87171', fontWeight: '800', fontSize: 14, paddingHorizontal: 4 },
+  card: { backgroundColor: '#1e293b', borderRadius: 14, padding: 12, marginBottom: 10, borderWidth: 0.5, borderColor: '#2d3a4f' },
+  cardRow: { alignItems: 'center', gap: 12 },
+  thumb: { width: 66, height: 66, borderRadius: 8, backgroundColor: '#0f172a' },
+  zoomBadge: { position: 'absolute', right: 3, bottom: 3, backgroundColor: '#000a', borderRadius: 6, padding: 2 },
+  imgName: { color: '#e2e8f0', fontSize: 12, fontWeight: '600', marginBottom: 8 },
 
-  optionsBox: {
-    backgroundColor: '#1e293b',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: '#293548',
-  },
-  optLabel: { color: '#e2e8f0', fontWeight: '800', fontSize: 13, marginBottom: 8 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  input: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
+  actionsRow: { gap: 8 },
+  miniBtn: { width: 34, height: 34, borderRadius: 8, backgroundColor: '#283548', alignItems: 'center', justifyContent: 'center' },
+  delBtn: { backgroundColor: '#3a1a1a' },
+
+  filterRow: { gap: 6, marginTop: 10, justifyContent: 'flex-start' },
+  filterChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#0f172a', borderWidth: 0.5, borderColor: '#334155', borderRadius: 16, paddingHorizontal: 9, paddingVertical: 5 },
+  filterChipActive: { backgroundColor: '#60a5fa', borderColor: '#60a5fa' },
+  filterText: { color: '#94a3b8', fontSize: 10, fontWeight: '600' },
+  filterTextActive: { color: '#0c1424' },
+
+  optionsBox: { backgroundColor: '#1e293b', borderRadius: 14, padding: 14, marginTop: 6, marginBottom: 16, borderWidth: 0.5, borderColor: '#2d3a4f' },
+  optLabel: { color: '#e2e8f0', fontWeight: '700', fontSize: 13, marginBottom: 8 },
+  nameRow: { alignItems: 'center', gap: 8 },
+  input: { flex: 1, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, color: '#fff', fontSize: 15, fontWeight: '600' },
   ext: { color: '#94a3b8', fontSize: 14, fontWeight: '700' },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
-  switchLabel: { color: '#cbd5e1', fontSize: 13, fontWeight: '600', flex: 1 },
+  switchRow: { alignItems: 'center', gap: 10, marginTop: 14 },
+  switchLabel: { color: '#cbd5e1', fontSize: 13, flex: 1 },
 
-  actionBtn: {
-    backgroundColor: NAVY,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
+  actionBtn: { backgroundColor: NAVY, borderRadius: 12, paddingVertical: 15, alignItems: 'center' },
   actionBtnDisabled: { opacity: 0.5 },
+  actionInner: { alignItems: 'center', gap: 8 },
   actionText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+
+  modalBg: { flex: 1, backgroundColor: '#000d', alignItems: 'center', justifyContent: 'center' },
+  modalClose: { position: 'absolute', top: 44, right: 20, zIndex: 2, padding: 6 },
+  previewImg: { width: '90%', height: '70%' },
+  previewBar: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 20, flexWrap: 'wrap', justifyContent: 'center', paddingHorizontal: 16 },
+  previewBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1e293b', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  previewBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  previewChip: { width: 42, height: 42, borderRadius: 10, backgroundColor: '#1e293b', alignItems: 'center', justifyContent: 'center' },
 });

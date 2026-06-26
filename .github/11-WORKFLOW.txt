@@ -1,0 +1,50 @@
+name: Build Android APK (GitHub Servers)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm' # تفعيل الكاش التلقائي لتسريع بناء الحزم
+
+      - name: Setup Java (JDK)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install EAS CLI
+        # إضافة @latest لضمان عدم حدوث تعارض في الإصدارات مع ملف eas.json
+        run: npm install -g eas-cli@latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build APK Locally on GitHub
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas build --platform android --profile preview --local
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: android-apk
+          # تعديل المسار لضمان التقاط ملف الـ APK من أي مجلد فرعي يولده الأمر
+          path: |
+            **/*.apk
+            *.apk
+          retention-days: 30
