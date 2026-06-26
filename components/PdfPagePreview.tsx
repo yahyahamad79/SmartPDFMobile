@@ -35,8 +35,8 @@ function buildPdfViewerHtml(base64: string, rotationDeg: number, fallbackLabel: 
     <canvas id="pdfCanvas"></canvas>
   </div>
   <div id="label">${fallbackLabel}${rotationDeg ? ` · ${rotationDeg}°` : ''}</div>
-  <script type="module">
-    import * as pdfjsLib from './pdf.min.txt';
+  <script src="./pdf.min.txt"></script>
+  <script>
     const data = atob('${base64}');
     const pdfData = new Uint8Array(data.length);
     for (let i = 0; i < data.length; i += 1) {
@@ -151,6 +151,9 @@ export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel = '
           domStorageEnabled
           startInLoadingState
           scalesPageToFit
+          allowFileAccess
+          allowUniversalAccessFromFileURLs
+          allowFileAccessFromFileURLs
           onError={() => setError(true)}
         />
       ) : null}
