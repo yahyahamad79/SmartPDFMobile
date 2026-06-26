@@ -71,6 +71,13 @@ export default function ImagesToPdfScreen() {
     return { scale, dispW, dispH, offX: (cropBox.w - dispW) / 2, offY: (cropBox.h - dispH) / 2 };
   }, [imgSize, cropBox]);
 
+  // مراجع تُبقي أحدث قيم fitted و cropRect متاحة داخل PanResponder
+  // (PanResponder يُنشأ مرة واحدة فيلتقط قيمًا قديمة؛ الـ refs تحلّ ذلك).
+  const fittedRef = React.useRef(fitted);
+  const cropRef = React.useRef(cropRect);
+  React.useEffect(() => { fittedRef.current = fitted; }, [fitted]);
+  React.useEffect(() => { cropRef.current = cropRect; }, [cropRect]);
+
   const rowDir = isRTL ? 'row-reverse' : 'row';
   const txtAlign = isRTL ? 'right' : 'left';
 
@@ -222,40 +229,71 @@ export default function ImagesToPdfScreen() {
     }
   };
 
-  // مقابض السحب: نوع الزاوية يحدّد أي حواف تتغيّر
-  const makeCorner = (corner: 'tl' | 'tr' | 'bl' | 'br') =>
-    PanResponder.create({
+  // مقابض السحب: نوع الزاوية يحدّد أي حواف تتغيّر.
+  // نقرأ fitted و cropRect من الـ refs (أحدث قيمة) لا من closure قديم.
+  // نبدأ من نقطة بداية اللمس (g.x0/y0 - بداية) ونحسب الإزاحة من قيمة الإطار وقت بدء السحب.
+  const makeCorner = (corner: 'tl' | 'tr' | 'bl' | 'br') => {
+    let start = { x: 0, y: 0, w: 0, h: 0 };
+    return PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        // خزّن الإطار وقت بدء السحب
+        start = { ...cropRef.current };
+      },
       onPanResponderMove: (_, g) => {
-        if (!fitted) return;
-        setCropRect((r) => {
-          const minSize = 40;
-          const left = fitted.offX;
-          const top = fitted.offY;
-          const right = fitted.offX + fitted.dispW;
-          const bottom = fitted.offY + fitted.dispH;
-          let { x, y, w, h } = r;
-          if (corner === 'tl') {
-            const nx = Math.max(left, Math.min(x + g.dx, x + w - minSize));
-            const ny = Math.max(top, Math.min(y + g.dy, y + h - minSize));
-            w = w + (x - nx); h = h + (y - ny); x = nx; y = ny;
-          } else if (corner === 'tr') {
-            const nw = Math.max(minSize, Math.min(w + g.dx, right - x));
-            const ny = Math.max(top, Math.min(y + g.dy, y + h - minSize));
-            h = h + (y - ny); y = ny; w = nw;
-          } else if (corner === 'bl') {
-            const nx = Math.max(left, Math.min(x + g.dx, x + w - minSize));
-            const nh = Math.max(minSize, Math.min(h + g.dy, bottom - y));
-            w = w + (x - nx); x = nx; h = nh;
-          } else { // br
-            w = Math.max(minSize, Math.min(w + g.dx, right - x));
-            h = Math.max(minSize, Math.min(h + g.dy, bottom - y));
-          }
-          return { x, y, w, h };
-        });
+        const fit = fittedRef.current;
+        if (!fit) return;
+        const minSize = 40;
+        const left = fit.offX;
+        const top = fit.offY;
+        const right = fit.offX + fit.dispW;
+        const bottom = fit.offY + fit.dispH;
+        let { x, y, w, h } = start; // نحسب من قيمة البداية + إجمالي الإزاحة dx/dy
+        if (corner === 'tl') {
+          const nx = Math.max(left, Math.min(x + g.dx, x + w - minSize));
+          const ny = Math.max(top, Math.min(y + g.dy, y + h - minSize));
+          w = w + (x - nx); h = h + (y - ny); x = nx; y = ny;
+        } else if (corner === 'tr') {
+          const ny = Math.max(top, Math.min(y + g.dy, y + h - minSize));
+          const nw = Math.max(minSize, Math.min(w + g.dx, right - x));
+          h = h + (y - ny); y = ny; w = nw;
+        } else if (corner === 'bl') {
+          const nx = Math.max(left, Math.min(x + g.dx, x + w - minSize));
+          const nh = Math.max(minSize, Math.min(h + g.dy, bottom - y));
+          w = w + (x - nx); x = nx; h = nh;
+        } else { // br
+          w = Math.max(minSize, Math.min(w + g.dx, right - x));
+          h = Math.max(minSize, Math.min(h + g.dy, bottom - y));
+        }
+        setCropRect({ x, y, w, h });
       },
     });
+  };
+
+  // سحب الإطار كله (تحريك دون تغيير الحجم)
+  const makeMover = () => {
+    let start = { x: 0, y: 0, w: 0, h: 0 };
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => { start = { ...cropRef.current }; },
+      onPanResponderMove: (_, g) => {
+        const fit = fittedRef.current;
+        if (!fit) return;
+        const left = fit.offX, top = fit.offY;
+        const right = fit.offX + fit.dispW, bottom = fit.offY + fit.dispH;
+        let nx = start.x + g.dx;
+        let ny = start.y + g.dy;
+        nx = Math.max(left, Math.min(nx, right - start.w));
+        ny = Math.max(top, Math.min(ny, bottom - start.h));
+        setCropRect({ x: nx, y: ny, w: start.w, h: start.h });
+      },
+    });
+  };
+  const mover = React.useRef(makeMover()).current;
 
   const cornerTL = React.useRef(makeCorner('tl')).current;
   const cornerTR = React.useRef(makeCorner('tr')).current;
@@ -563,11 +601,13 @@ export default function ImagesToPdfScreen() {
                 <View pointerEvents="none" style={[styles.shade, { left: cropRect.x + cropRect.w, top: cropRect.y, width: cropBox.w - cropRect.x - cropRect.w, height: cropRect.h }]} />
                 {/* إطار القص */}
                 <View pointerEvents="none" style={[styles.cropFrame, { left: cropRect.x, top: cropRect.y, width: cropRect.w, height: cropRect.h }]} />
+                {/* منطقة سحب الإطار كله */}
+                <View {...mover.panHandlers} style={{ position: 'absolute', left: cropRect.x + 18, top: cropRect.y + 18, width: Math.max(1, cropRect.w - 36), height: Math.max(1, cropRect.h - 36) }} />
                 {/* المقابض الأربعة */}
-                <View {...cornerTL.panHandlers} style={[styles.handle, { left: cropRect.x - 16, top: cropRect.y - 16 }]} />
-                <View {...cornerTR.panHandlers} style={[styles.handle, { left: cropRect.x + cropRect.w - 16, top: cropRect.y - 16 }]} />
-                <View {...cornerBL.panHandlers} style={[styles.handle, { left: cropRect.x - 16, top: cropRect.y + cropRect.h - 16 }]} />
-                <View {...cornerBR.panHandlers} style={[styles.handle, { left: cropRect.x + cropRect.w - 16, top: cropRect.y + cropRect.h - 16 }]} />
+                <View {...cornerTL.panHandlers} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} style={[styles.handle, { left: cropRect.x - 16, top: cropRect.y - 16 }]} />
+                <View {...cornerTR.panHandlers} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} style={[styles.handle, { left: cropRect.x + cropRect.w - 16, top: cropRect.y - 16 }]} />
+                <View {...cornerBL.panHandlers} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} style={[styles.handle, { left: cropRect.x - 16, top: cropRect.y + cropRect.h - 16 }]} />
+                <View {...cornerBR.panHandlers} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} style={[styles.handle, { left: cropRect.x + cropRect.w - 16, top: cropRect.y + cropRect.h - 16 }]} />
               </View>
               <View style={styles.previewBar}>
                 <TouchableOpacity style={[styles.previewBtn, { backgroundColor: '#1d4ed8' }]} onPress={applyCrop} disabled={busy}>
