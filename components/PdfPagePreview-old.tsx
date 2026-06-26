@@ -9,7 +9,6 @@ type Props = {
   uri: string;           // file:// للملف المحلي
   rotationDeg?: number;  // زاوية العرض الإضافية للمعاينة فقط
   fallbackLabel?: string;
-  pageNumber?: number;   // رقم الصفحة المراد عرضها (جديد)
 };
 
 const pdfJsModule = require('../assets/pdfjs/pdf.min.txt');
@@ -25,79 +24,70 @@ function buildPdfViewerHtml(
   fallbackLabel: string,
   pdfJsCode: string,
   pdfWorkerCode: string,
-  pageNumber: number,
 ) {
+  const jsString = (code: string) => JSON.stringify(code);
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <style>
-    body { margin: 0; background: #0b1220; color: #cbd5e1; display: flex; flex-direction: column; height: 100vh; justify-content: center; align-items: center; }
-    #viewer { flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden; width: 100%; }
-    canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
-    #label { padding: 12px; font-size: 14px; text-align: center; color: #94a3b8; width: 100%; background: #0b1220; }
+    body { margin: 0; background: #0b1220; color: #cbd5e1; display: flex; flex-direction: column; height: 100vh; }
+    #viewer { flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+    canvas { max-width: 100%; height: auto; }
+    #label { padding: 12px; font-size: 14px; text-align: center; color: #94a3b8; }
   </style>
-  <script>${pdfJsCode}</script>
 </head>
 <body>
   <div id="viewer">
     <canvas id="pdfCanvas"></canvas>
   </div>
   <div id="label">${fallbackLabel}${rotationDeg ? ` · ${rotationDeg}°` : ''}</div>
-  
   <script>
+    const pdfJsCode = ${jsString(pdfJsCode)};
+    const pdfWorkerCode = ${jsString(pdfWorkerCode)};
     window.addEventListener('error', (event) => {
       event.preventDefault();
       const message = event.message || 'unknown error';
       document.body.innerHTML = '<div style="color:#f87171;padding:20px;text-align:center;">خطأ في معاينة PDF: ' + message + '</div>';
     });
 
-    try {
-      // إعداد الـ Worker من خلال Blob للعمل في الخلفية
-      const pdfWorkerBlob = new Blob([${JSON.stringify(pdfWorkerCode)}], { type: 'application/javascript' });
-      const pdfWorkerUrl = URL.createObjectURL(pdfWorkerBlob);
-      
-      const pdfjsLib = window['pdfjs-dist/build/pdf'] || window.pdfjsLib;
-      pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+    const pdfJsBlob = new Blob([pdfJsCode], { type: 'text/javascript' });
+    const pdfJsUrl = URL.createObjectURL(pdfJsBlob);
+    const pdfWorkerBlob = new Blob([pdfWorkerCode], { type: 'application/javascript' });
+    const pdfWorkerUrl = URL.createObjectURL(pdfWorkerBlob);
 
-      const data = atob('${base64}');
-      const pdfData = new Uint8Array(data.length);
-      for (let i = 0; i < data.length; i += 1) {
-        pdfData[i] = data.charCodeAt(i);
-      }
-
-      pdfjsLib.getDocument({ data: pdfData }).promise
-        .then((pdf) => pdf.getPage(${pageNumber}))
-        .then((page) => {
-          // دمج زاوية الصفحة الأصلية مع الزاوية المحددة من قبل المستخدم
-          const currentRotation = (page.rotate + ${rotationDeg}) % 360;
-          
-          // تمرير الزاوية للـ viewport ليقوم بتدوير أبعاد الـ Canvas تلقائياً
-          const viewport = page.getViewport({ scale: 1, rotation: currentRotation });
-          
-          const scale = Math.min(window.innerWidth / viewport.width, (window.innerHeight - 60) / viewport.height);
-          const scaledViewport = page.getViewport({ scale, rotation: currentRotation });
-          
-          const canvas = document.getElementById('pdfCanvas');
-          canvas.width = scaledViewport.width;
-          canvas.height = scaledViewport.height;
-          
-          const context = canvas.getContext('2d');
-          return page.render({ canvasContext: context, viewport: scaledViewport }).promise;
-        })
-        .catch((err) => {
-          const message = (err && err.message) ? err.message : 'unknown';
-          document.body.innerHTML = '<div style="color:#f87171;padding:20px;text-align:center;">فشل معاينة PDF: ' + message + '</div>';
-        });
-    } catch (e) {
-      document.body.innerHTML = '<div style="color:#f87171;padding:20px;text-align:center;">خطأ في تحميل المكتبة: ' + e.message + '</div>';
-    }
+    import(pdfJsUrl)
+      .then((module) => {
+        const pdfjsLib = module.default || module;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+        const data = atob('${base64}');
+        const pdfData = new Uint8Array(data.length);
+        for (let i = 0; i < data.length; i += 1) {
+          pdfData[i] = data.charCodeAt(i);
+        }
+        return pdfjsLib.getDocument({ data: pdfData }).promise;
+      })
+      .then((pdf) => pdf.getPage(1))
+      .then((page) => {
+        const viewport = page.getViewport({ scale: 1 });
+        const scale = Math.min(window.innerWidth / viewport.width, (window.innerHeight - 40) / viewport.height);
+        const scaledViewport = page.getViewport({ scale });
+        const canvas = document.getElementById('pdfCanvas');
+        canvas.width = scaledViewport.width;
+        canvas.height = scaledViewport.height;
+        const context = canvas.getContext('2d');
+        page.render({ canvasContext: context, viewport: scaledViewport });
+      })
+      .catch((err) => {
+        const message = (err && err.message) ? err.message : 'unknown';
+        document.body.innerHTML = '<div style="color:#f87171;padding:20px;text-align:center;">فشل معاينة PDF: ' + message + '</div>';
+      });
   </script>
 </body>
 </html>`;
 }
 
-export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel = 'PDF', pageNumber = 1 }: Props) {
+export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel = 'PDF' }: Props) {
   const [html, setHtml] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -140,7 +130,7 @@ export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel = '
         ]);
         if (!active) return;
 
-        setHtml(buildPdfViewerHtml(pdfBase64, rotationDeg, fallbackLabel, pdfJsCode, pdfWorkerCode, pageNumber));
+        setHtml(buildPdfViewerHtml(pdfBase64, rotationDeg, fallbackLabel, pdfJsCode, pdfWorkerCode));
       } catch {
         if (!active) return;
         setError(true);
@@ -152,7 +142,7 @@ export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel = '
 
     preparePreview();
     return () => { active = false; };
-  }, [normalizedUri, rotationDeg, fallbackLabel, pageNumber]);
+  }, [normalizedUri, rotationDeg, fallbackLabel]);
 
   const fallback = (
     <View style={styles.fallback}>

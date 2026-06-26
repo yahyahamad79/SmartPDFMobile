@@ -19,6 +19,14 @@ import { useLang } from '@/lib/i18n';
 import { saveToArchive } from '@/lib/archive';
 import PdfPagePreview, { isPdfPreviewAvailable } from '@/components/PdfPagePreview';
 
+/**
+ * Rotate Pages — محسّنة بمعاينة محتوى حقيقي.
+ * - معاينة محتوى الـ PDF عبر react-native-pdf-renderer (مع fallback آمن).
+ * - تدوير لكل صفحة على حدة (0/90/180/270) — المستخدم يضبط كل صفحة.
+ * - التطبيق الفعلي عبر pdf-lib عند الحفظ.
+ * - يحفظ في الأرشيف ويوجّه لشاشة النتيجة (يحترم مجلد الإعدادات).
+ */
+
 type PickedFile = {
   uri: string;
   name: string;
@@ -32,7 +40,9 @@ export default function RotatePdfScreen() {
   const [file, setFile] = useState<PickedFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [outputName, setOutputName] = useState('rotated');
+  // زوايا التدوير لكل صفحة (نسبية، يختارها المستخدم): { رقم الصفحة: 0|90|180|270 }
   const [rotations, setRotations] = useState<Record<number, number>>({});
+  // الصفحة المعروضة في المعاينة الكبيرة (1-based) أو null
   const [previewPage, setPreviewPage] = useState<number | null>(null);
 
   const rowDir = isRTL ? 'row-reverse' : 'row';
@@ -64,10 +74,12 @@ export default function RotatePdfScreen() {
 
   const clearFile = () => { setFile(null); setRotations({}); };
 
+  // تدوير صفحة واحدة +90 (نسبي)
   const rotatePage = (page: number) => {
     setRotations((prev) => ({ ...prev, [page]: ((prev[page] || 0) + 90) % 360 }));
   };
 
+  // تدوير كل الصفحات +90
   const rotateAll = () => {
     if (!file) return;
     setRotations((prev) => {
@@ -169,6 +181,7 @@ export default function RotatePdfScreen() {
               </View>
             </View>
 
+            {/* أزرار عامة */}
             <View style={[styles.bulkRow, { flexDirection: rowDir }]}>
               <TouchableOpacity style={styles.bulkBtn} onPress={rotateAll} disabled={busy}>
                 <Ionicons name="refresh-outline" size={16} color="#cbd5e1" />
@@ -184,6 +197,7 @@ export default function RotatePdfScreen() {
               {previewSupported ? t('rotateTapPreview') : t('rotateTapPage')}
             </Text>
 
+            {/* شبكة الصفحات: بطاقة لكل صفحة مع زاويتها وزر تدوير */}
             <View style={styles.pagesGrid}>
               {Array.from({ length: file.pageCount }, (_, idx) => {
                 const page = idx + 1;
@@ -251,7 +265,7 @@ export default function RotatePdfScreen() {
         )}
       </ScrollView>
 
-      {/* شاشة معاينة محتوى الصفحة المحددة بملء الشاشة مع التعديل الجديد للتمرير الديناميكي */}
+      {/* معاينة محتوى الصفحة بملء الشاشة */}
       {file && previewPage !== null && (
         <View style={styles.previewOverlay}>
           <View style={[styles.previewHeader, { flexDirection: rowDir }]}>
@@ -264,7 +278,6 @@ export default function RotatePdfScreen() {
           <View style={styles.previewBody}>
             <PdfPagePreview
               uri={file.uri}
-              pageNumber={previewPage} // <-- تم تعديله لتمرير الصفحة المطلوبة لعرض محتواها الحقيقي
               rotationDeg={rotations[previewPage] || 0}
               fallbackLabel={`${t('pages')} ${previewPage}`}
             />
@@ -296,16 +309,21 @@ const styles = StyleSheet.create({
   backBtn: { marginBottom: 8 },
   backText: { color: '#60a5fa', fontSize: 16, fontWeight: '700' },
   title: { fontSize: 24, fontWeight: '800', color: '#ffffff' },
+
   pickBtn: { borderWidth: 2, borderColor: NAVY, borderStyle: 'dashed', borderRadius: 14, paddingVertical: 24, alignItems: 'center', backgroundColor: '#16233a', marginTop: 8, marginBottom: 16 },
   pickText: { color: '#cbd5e1', fontWeight: '700', fontSize: 14 },
+
   fileCard: { backgroundColor: '#1e293b', borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#293548' },
   fileRow: { alignItems: 'center', gap: 10 },
   fileSize: { color: '#64748b', fontSize: 11, fontWeight: '700' },
   fileName: { flex: 1, color: '#e2e8f0', fontSize: 13, fontWeight: '600', textAlign: 'right' },
+
   bulkRow: { gap: 10, marginBottom: 12 },
   bulkBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#1e293b', borderRadius: 10, paddingVertical: 11, borderWidth: 0.5, borderColor: '#2d3a4f' },
   bulkText: { color: '#cbd5e1', fontSize: 13, fontWeight: '600' },
+
   hint: { color: '#64748b', fontSize: 12, marginBottom: 12, paddingHorizontal: 2 },
+
   pagesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
   pageCard: { width: '31%', backgroundColor: '#1e293b', borderRadius: 12, padding: 8, borderWidth: 0.5, borderColor: '#2d3a4f', alignItems: 'center' },
   pageCardActive: { borderColor: '#60a5fa', borderWidth: 1 },
@@ -317,15 +335,18 @@ const styles = StyleSheet.create({
   angleText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   rotateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#283548', borderRadius: 8, paddingVertical: 7, width: '100%' },
   rotateBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+
   optionsBox: { backgroundColor: '#1e293b', borderRadius: 14, padding: 14, marginTop: 8, marginBottom: 16, borderWidth: 1, borderColor: '#293548' },
   optLabel: { color: '#e2e8f0', fontWeight: '800', fontSize: 13, marginBottom: 8 },
   nameRow: { alignItems: 'center', gap: 8 },
   input: { flex: 1, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, color: '#fff', fontSize: 15, fontWeight: '700' },
   ext: { color: '#94a3b8', fontSize: 14, fontWeight: '700' },
+
   actionBtn: { backgroundColor: NAVY, borderRadius: 12, paddingVertical: 15, alignItems: 'center' },
   actionBtnDisabled: { opacity: 0.5 },
   actionInner: { alignItems: 'center', gap: 8 },
   actionText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+
   previewOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0b1220' },
   previewHeader: { alignItems: 'center', gap: 12, paddingTop: 44, paddingHorizontal: 16, paddingBottom: 12 },
   previewCloseBtn: { padding: 4 },
