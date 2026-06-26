@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet, UIManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 /**
@@ -24,6 +24,27 @@ try {
 } catch {
   loadError = true;
 }
+
+// التحقق أن المكوّن الأصلي (ViewManager) مسجّل فعلاً في الـ runtime.
+// في Expo Go أو بناء بلا المكتبة، يكون require ناجحاً لكن ViewManager غائباً،
+// فيظهر خطأ "Can't find ViewManager 'RNPDFRenderView'". هذا الفحص يمنعه.
+function isNativeViewRegistered(): boolean {
+  try {
+    const names = ['RNPDFRenderView', 'RNPdfRendererView', 'PdfRendererView'];
+    const cfg: any = (UIManager as any).getViewManagerConfig
+      ? (UIManager as any).getViewManagerConfig.bind(UIManager)
+      : null;
+    if (cfg) {
+      return names.some((n) => !!cfg(n));
+    }
+    // fallback لإصدارات قديمة: تحقق من وجود الاسم على UIManager
+    return names.some((n) => !!(UIManager as any)[n]);
+  } catch {
+    return false;
+  }
+}
+
+const nativeReady = !loadError && !!PdfRendererView && isNativeViewRegistered();
 
 type Props = {
   uri: string;           // file:// للملف المحلي
@@ -50,7 +71,7 @@ class PdfErrorBoundary extends React.Component<
 }
 
 export function isPdfPreviewAvailable(): boolean {
-  return !!PdfRendererView && !loadError;
+  return nativeReady;
 }
 
 export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel }: Props) {
@@ -61,7 +82,7 @@ export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel }: 
     </View>
   );
 
-  if (!PdfRendererView || loadError) {
+  if (!nativeReady) {
     return fallback;
   }
 
