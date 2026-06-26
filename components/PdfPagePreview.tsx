@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
@@ -9,11 +8,8 @@ type Props = {
   uri: string;           // file:// للملف المحلي
   rotationDeg?: number;  // زاوية العرض الإضافية للمعاينة فقط
   fallbackLabel?: string;
-  pageNumber?: number;   // رقم الصفحة المراد عرضها (جديد)
+  pageNumber?: number;   // رقم الصفحة المراد عرضها ديناميكياً
 };
-
-const pdfJsModule = require('../assets/pdfjs/pdf.min.txt');
-const pdfWorkerModule = require('../assets/pdfjs/pdf.worker.min.txt');
 
 export function isPdfPreviewAvailable(): boolean {
   return true;
@@ -23,21 +19,23 @@ function buildPdfViewerHtml(
   base64: string,
   rotationDeg: number,
   fallbackLabel: string,
-  pdfJsCode: string,
-  pdfWorkerCode: string,
   pageNumber: number,
 ) {
+  // روابط CDN مستقرة وآمنة تعمل على الكمبيوتر (Web) والهواتف (Expo Go) دون مشاكل أذونات الـ Blob أو الملفات المحلية
+  const pdfJsCDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+  const pdfWorkerCDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <style>
-    body { margin: 0; background: #0b1220; color: #cbd5e1; display: flex; flex-direction: column; height: 100vh; justify-content: center; align-items: center; }
+    body { margin: 0; background: #0b1220; color: #cbd5e1; display: flex; flex-direction: column; height: 100vh; justify-content: center; align-items: center; font-family: system-ui, sans-serif; }
     #viewer { flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden; width: 100%; }
     canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
-    #label { padding: 12px; font-size: 14px; text-align: center; color: #94a3b8; width: 100%; background: #0b1220; }
+    #label { padding: 12px; font-size: 14px; text-align: center; color: #94a3b8; width: 100%; background: #0b1220; box-sizing: border-box; }
   </style>
-  <script>${pdfJsCode}</script>
+  <script src="${pdfJsCDN}"></script>
 </head>
 <body>
   <div id="viewer">
@@ -53,12 +51,9 @@ function buildPdfViewerHtml(
     });
 
     try {
-      // إعداد الـ Worker من خلال Blob للعمل في الخلفية
-      const pdfWorkerBlob = new Blob([${JSON.stringify(pdfWorkerCode)}], { type: 'application/javascript' });
-      const pdfWorkerUrl = URL.createObjectURL(pdfWorkerBlob);
-      
       const pdfjsLib = window['pdfjs-dist/build/pdf'] || window.pdfjsLib;
-      pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+      // تعيين الـ Worker مباشرة من رابط الـ CDN لتجنب قيود الحماية المتصفح
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "${pdfWorkerCDN}";
 
       const data = atob('${base64}');
       const pdfData = new Uint8Array(data.length);
@@ -69,10 +64,10 @@ function buildPdfViewerHtml(
       pdfjsLib.getDocument({ data: pdfData }).promise
         .then((pdf) => pdf.getPage(${pageNumber}))
         .then((page) => {
-          // دمج زاوية الصفحة الأصلية مع الزاوية المحددة من قبل المستخدم
+          // دمج زاوية الصفحة الأصلية مع زاوية التدوير التي اختارها المستخدم
           const currentRotation = (page.rotate + ${rotationDeg}) % 360;
           
-          // تمرير الزاوية للـ viewport ليقوم بتدوير أبعاد الـ Canvas تلقائياً
+          // تحديث الـ viewport بأبعاد الزاوية الجديدة تلقائياً
           const viewport = page.getViewport({ scale: 1, rotation: currentRotation });
           
           const scale = Math.min(window.innerWidth / viewport.width, (window.innerHeight - 60) / viewport.height);
@@ -121,27 +116,14 @@ export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel = '
           throw new Error('Invalid URI');
         }
 
-        const [loadedPdfJsAsset, loadedPdfWorkerAsset] = await Asset.loadAsync([
-          pdfJsModule as number,
-          pdfWorkerModule as number,
-        ]);
+        // قراءة الملف مباشرة وتحويله إلى قاعدة base64
+        const pdfBase64 = await FileSystem.readAsStringAsync(normalizedUri, { encoding: 'base64' });
+        
         if (!active) return;
 
-        const pdfJsUri = loadedPdfJsAsset.localUri || loadedPdfJsAsset.uri;
-        const pdfWorkerUri = loadedPdfWorkerAsset.localUri || loadedPdfWorkerAsset.uri;
-        if (!pdfJsUri || !pdfWorkerUri) {
-          throw new Error('Unable to resolve PDF.js asset URIs');
-        }
-
-        const [pdfJsCode, pdfWorkerCode, pdfBase64] = await Promise.all([
-          FileSystem.readAsStringAsync(pdfJsUri),
-          FileSystem.readAsStringAsync(pdfWorkerUri),
-          FileSystem.readAsStringAsync(normalizedUri, { encoding: 'base64' }),
-        ]);
-        if (!active) return;
-
-        setHtml(buildPdfViewerHtml(pdfBase64, rotationDeg, fallbackLabel, pdfJsCode, pdfWorkerCode, pageNumber));
-      } catch {
+        // بناء مستند الـ HTML وتمريره للـ WebView
+        setHtml(buildPdfViewerHtml(pdfBase64, rotationDeg, fallbackLabel, pageNumber));
+      } catch (err) {
         if (!active) return;
         setError(true);
       } finally {
