@@ -1,6 +1,22 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { decode as jpegDecode, encode as jpegEncode } from 'jpeg-js';
+import { Buffer as NodeBuffer } from 'buffer';
+
+// jpeg-js يحتاج Buffer (Node.js) غير الموجود في RN/Hermes.
+// نضمن حقنه أولاً، ثم نحمّل jpeg-js كسولاً عبر require (يمنع خطأ Buffer doesn't exist).
+function ensureBuffer() {
+  // @ts-ignore
+  if (typeof global !== 'undefined' && !global.Buffer) {
+    // @ts-ignore
+    global.Buffer = NodeBuffer;
+  }
+}
+function getJpeg() {
+  ensureBuffer();
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require('jpeg-js');
+}
+
 
 /**
  * imageFilters — فلاتر لونية حقيقية، آمنة 100% (بلا مكتبات native).
@@ -79,7 +95,8 @@ export async function applyRotationAndFilter(
   // 2) اقرأ JPEG وفكّه إلى بكسلات
   const b64 = await FileSystem.readAsStringAsync(stage1.uri, { encoding: 'base64' });
   let bytes = base64ToBytes(b64);
-  let raw = jpegDecode(bytes, { useTArray: true, maxResolutionInMP: 50, maxMemoryUsageInMB: 1024 });
+  const jpeg = getJpeg();
+  let raw = jpeg.decode(bytes, { useTArray: true, maxResolutionInMP: 50, maxMemoryUsageInMB: 1024 });
 
   // إن كانت الصورة ضخمة، نصغّرها أولاً عبر manipulator ثم نعيد الفكّ
   if (raw.width > MAX_DIM || raw.height > MAX_DIM) {
@@ -92,7 +109,7 @@ export async function applyRotationAndFilter(
     );
     const rb64 = await FileSystem.readAsStringAsync(resized.uri, { encoding: 'base64' });
     bytes = base64ToBytes(rb64);
-    raw = jpegDecode(bytes, { useTArray: true, maxResolutionInMP: 50, maxMemoryUsageInMB: 1024 });
+    raw = jpeg.decode(bytes, { useTArray: true, maxResolutionInMP: 50, maxMemoryUsageInMB: 1024 });
   }
 
   // 3) طبّق الفلتر على البكسلات (RGBA)
@@ -100,7 +117,7 @@ export async function applyRotationAndFilter(
   applyFilterInPlace(data, filter);
 
   // 4) أعد الترميز JPEG
-  const encoded = jpegEncode({ data, width: raw.width, height: raw.height }, 90);
+  const encoded = jpeg.encode({ data, width: raw.width, height: raw.height }, 90);
   const outBytes = encoded.data instanceof Uint8Array ? encoded.data : new Uint8Array(encoded.data);
   const outB64 = bytesToBase64(outBytes);
 
@@ -151,4 +168,30 @@ function applyFilterInPlace(data: Uint8Array, filter: Filter): void {
     }
     return;
   }
+}
+
+
+/**
+ * يجلب أبعاد الصورة (العرض/الارتفاع) دون تعديلها.
+ * نستخدم manipulateAsync بلا أي action للحصول على width/height.
+ */
+export async function getImageSize(uri: string): Promise<{ width: number; height: number }> {
+  const r = await ImageManipulator.manipulateAsync(uri, [], { base64: false });
+  return { width: r.width, height: r.height };
+}
+
+/**
+ * يقصّ الصورة إلى المستطيل المعطى (بإحداثيات الصورة الأصلية) ويعيد uri جديد.
+ * القص حقيقي عبر expo-image-manipulator (آمن).
+ */
+export async function cropImage(
+  uri: string,
+  rect: { originX: number; originY: number; width: number; height: number }
+): Promise<{ uri: string; mime: string }> {
+  const r = await ImageManipulator.manipulateAsync(
+    uri,
+    [{ crop: rect }],
+    { compress: 0.95, format: ImageManipulator.SaveFormat.JPEG, base64: false }
+  );
+  return { uri: r.uri, mime: 'image/jpeg' };
 }

@@ -1,7 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
-import { applyRotationAndFilter, Filter as ImgFilter } from '@/lib/imageFilters';
+import { applyRotationAndFilter, cropImage, getImageSize, Filter as ImgFilter } from '@/lib/imageFilters';
 import { useRouter } from 'expo-router';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import React, { useState } from 'react';
@@ -9,7 +9,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Dimensions,
   Modal,
+  PanResponder,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -49,6 +51,25 @@ export default function ImagesToPdfScreen() {
   const [addNumbers, setAddNumbers] = useState(false);
   const [autoPortrait, setAutoPortrait] = useState(true);
   const [preview, setPreview] = useState<number | null>(null);
+  // وضع القص التفاعلي
+  const [cropMode, setCropMode] = useState(false);
+  const [imgSize, setImgSize] = useState<{ width: number; height: number } | null>(null);
+  // مستطيل القص بإحداثيات منطقة العرض (داخل صندوق المعاينة)
+  const [cropRect, setCropRect] = useState({ x: 0, y: 0, w: 0, h: 0 });
+  // أبعاد صندوق المعاينة الثابت
+  const cropBox = React.useMemo(() => {
+    const w = Dimensions.get('window').width * 0.9;
+    const h = Dimensions.get('window').height * 0.62;
+    return { w, h };
+  }, []);
+  // أبعاد العرض الملائمة (contain) داخل الصندوق + الإزاحة
+  const fitted = React.useMemo(() => {
+    if (!imgSize) return null;
+    const scale = Math.min(cropBox.w / imgSize.width, cropBox.h / imgSize.height);
+    const dispW = imgSize.width * scale;
+    const dispH = imgSize.height * scale;
+    return { scale, dispW, dispH, offX: (cropBox.w - dispW) / 2, offY: (cropBox.h - dispH) / 2 };
+  }, [imgSize, cropBox]);
 
   const rowDir = isRTL ? 'row-reverse' : 'row';
   const txtAlign = isRTL ? 'right' : 'left';
@@ -147,6 +168,99 @@ export default function ImagesToPdfScreen() {
       prev.map((img, i) => (i === index ? { ...img, filter } : img))
     );
   };
+
+  // ===== القص التفاعلي =====
+  // فتح وضع القص: نجلب أبعاد الصورة الحقيقية ونهيّئ إطاراً افتراضياً (80% وسط).
+  const openCrop = async (index: number) => {
+    try {
+      const size = await getImageSize(images[index].uri);
+      setImgSize(size);
+      const scale = Math.min(cropBox.w / size.width, cropBox.h / size.height);
+      const dispW = size.width * scale;
+      const dispH = size.height * scale;
+      const offX = (cropBox.w - dispW) / 2;
+      const offY = (cropBox.h - dispH) / 2;
+      // إطار افتراضي = 80% من منطقة العرض، موسّط
+      const w = dispW * 0.8;
+      const h = dispH * 0.8;
+      setCropRect({ x: offX + (dispW - w) / 2, y: offY + (dispH - h) / 2, w, h });
+      setCropMode(true);
+    } catch {
+      Alert.alert(t('error'), t('couldNotRead'));
+    }
+  };
+
+  const cancelCrop = () => {
+    setCropMode(false);
+    setImgSize(null);
+  };
+
+  // تطبيق القص فعلياً عبر expo-image-manipulator
+  const applyCrop = async () => {
+    if (preview === null || !imgSize || !fitted) return;
+    setBusy(true);
+    try {
+      // حوّل مستطيل القص (إحداثيات الصندوق) إلى إحداثيات الصورة الأصلية
+      let ox = (cropRect.x - fitted.offX) / fitted.scale;
+      let oy = (cropRect.y - fitted.offY) / fitted.scale;
+      let ow = cropRect.w / fitted.scale;
+      let oh = cropRect.h / fitted.scale;
+      ox = Math.max(0, Math.min(ox, imgSize.width));
+      oy = Math.max(0, Math.min(oy, imgSize.height));
+      ow = Math.max(1, Math.min(ow, imgSize.width - ox));
+      oh = Math.max(1, Math.min(oh, imgSize.height - oy));
+      const rect = { originX: Math.round(ox), originY: Math.round(oy), width: Math.round(ow), height: Math.round(oh) };
+      const res = await cropImage(images[preview].uri, rect);
+      // استبدل uri الصورة بالمقصوصة، وصفّر التدوير (القص يطبّق على الحالي)
+      setImages((prev) => prev.map((im, i) => (i === preview ? { ...im, uri: res.uri, mime: 'image/jpeg', rotation: 0 } : im)));
+      setCropMode(false);
+      setImgSize(null);
+    } catch (e: any) {
+      Alert.alert(t('error'), e?.message ? String(e.message) : 'crop failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // مقابض السحب: نوع الزاوية يحدّد أي حواف تتغيّر
+  const makeCorner = (corner: 'tl' | 'tr' | 'bl' | 'br') =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (_, g) => {
+        if (!fitted) return;
+        setCropRect((r) => {
+          const minSize = 40;
+          const left = fitted.offX;
+          const top = fitted.offY;
+          const right = fitted.offX + fitted.dispW;
+          const bottom = fitted.offY + fitted.dispH;
+          let { x, y, w, h } = r;
+          if (corner === 'tl') {
+            const nx = Math.max(left, Math.min(x + g.dx, x + w - minSize));
+            const ny = Math.max(top, Math.min(y + g.dy, y + h - minSize));
+            w = w + (x - nx); h = h + (y - ny); x = nx; y = ny;
+          } else if (corner === 'tr') {
+            const nw = Math.max(minSize, Math.min(w + g.dx, right - x));
+            const ny = Math.max(top, Math.min(y + g.dy, y + h - minSize));
+            h = h + (y - ny); y = ny; w = nw;
+          } else if (corner === 'bl') {
+            const nx = Math.max(left, Math.min(x + g.dx, x + w - minSize));
+            const nh = Math.max(minSize, Math.min(h + g.dy, bottom - y));
+            w = w + (x - nx); x = nx; h = nh;
+          } else { // br
+            w = Math.max(minSize, Math.min(w + g.dx, right - x));
+            h = Math.max(minSize, Math.min(h + g.dy, bottom - y));
+          }
+          return { x, y, w, h };
+        });
+      },
+    });
+
+  const cornerTL = React.useRef(makeCorner('tl')).current;
+  const cornerTR = React.useRef(makeCorner('tr')).current;
+  const cornerBL = React.useRef(makeCorner('bl')).current;
+  const cornerBR = React.useRef(makeCorner('br')).current;
 
   const finalFileName = () => {
     let n = outputName.trim();
@@ -400,12 +514,13 @@ export default function ImagesToPdfScreen() {
       </ScrollView>
 
       {/* معاينة كبيرة بملء الشاشة */}
-      <Modal visible={preview !== null} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
+      <Modal visible={preview !== null} transparent animationType="fade" onRequestClose={() => { setCropMode(false); setPreview(null); }}>
         <View style={styles.modalBg}>
-          <TouchableOpacity style={styles.modalClose} onPress={() => setPreview(null)}>
+          <TouchableOpacity style={styles.modalClose} onPress={() => { setCropMode(false); setImgSize(null); setPreview(null); }}>
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
-          {preview !== null && images[preview] && (
+
+          {preview !== null && images[preview] && !cropMode && (
             <>
               <Image
                 source={{ uri: images[preview].uri }}
@@ -417,6 +532,10 @@ export default function ImagesToPdfScreen() {
                   <Ionicons name="refresh-outline" size={20} color="#fff" />
                   <Text style={styles.previewBtnText}>{t('rotateTitle')}</Text>
                 </TouchableOpacity>
+                <TouchableOpacity style={styles.previewBtn} onPress={() => openCrop(preview)}>
+                  <Ionicons name="crop-outline" size={20} color="#fff" />
+                  <Text style={styles.previewBtnText}>{t('cropTitle')}</Text>
+                </TouchableOpacity>
                 {FILTERS.map((f) => {
                   const active = images[preview].filter === f.key;
                   return (
@@ -425,6 +544,44 @@ export default function ImagesToPdfScreen() {
                     </TouchableOpacity>
                   );
                 })}
+              </View>
+            </>
+          )}
+
+          {preview !== null && images[preview] && cropMode && fitted && (
+            <>
+              <View style={[styles.cropArea, { width: cropBox.w, height: cropBox.h }]}>
+                <Image
+                  source={{ uri: images[preview].uri }}
+                  style={{ width: cropBox.w, height: cropBox.h }}
+                  resizeMode="contain"
+                />
+                {/* تظليل خارج إطار القص (أربع مناطق) */}
+                <View pointerEvents="none" style={[styles.shade, { left: 0, top: 0, width: cropBox.w, height: cropRect.y }]} />
+                <View pointerEvents="none" style={[styles.shade, { left: 0, top: cropRect.y + cropRect.h, width: cropBox.w, height: cropBox.h - cropRect.y - cropRect.h }]} />
+                <View pointerEvents="none" style={[styles.shade, { left: 0, top: cropRect.y, width: cropRect.x, height: cropRect.h }]} />
+                <View pointerEvents="none" style={[styles.shade, { left: cropRect.x + cropRect.w, top: cropRect.y, width: cropBox.w - cropRect.x - cropRect.w, height: cropRect.h }]} />
+                {/* إطار القص */}
+                <View pointerEvents="none" style={[styles.cropFrame, { left: cropRect.x, top: cropRect.y, width: cropRect.w, height: cropRect.h }]} />
+                {/* المقابض الأربعة */}
+                <View {...cornerTL.panHandlers} style={[styles.handle, { left: cropRect.x - 16, top: cropRect.y - 16 }]} />
+                <View {...cornerTR.panHandlers} style={[styles.handle, { left: cropRect.x + cropRect.w - 16, top: cropRect.y - 16 }]} />
+                <View {...cornerBL.panHandlers} style={[styles.handle, { left: cropRect.x - 16, top: cropRect.y + cropRect.h - 16 }]} />
+                <View {...cornerBR.panHandlers} style={[styles.handle, { left: cropRect.x + cropRect.w - 16, top: cropRect.y + cropRect.h - 16 }]} />
+              </View>
+              <View style={styles.previewBar}>
+                <TouchableOpacity style={[styles.previewBtn, { backgroundColor: '#1d4ed8' }]} onPress={applyCrop} disabled={busy}>
+                  {busy ? <ActivityIndicator color="#fff" size="small" /> : (
+                    <>
+                      <Ionicons name="checkmark" size={20} color="#fff" />
+                      <Text style={styles.previewBtnText}>{t('cropApply')}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.previewBtn} onPress={cancelCrop} disabled={busy}>
+                  <Ionicons name="close" size={20} color="#fff" />
+                  <Text style={styles.previewBtnText}>{t('cancel')}</Text>
+                </TouchableOpacity>
               </View>
             </>
           )}
@@ -492,4 +649,9 @@ const styles = StyleSheet.create({
   previewBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1e293b', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
   previewBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   previewChip: { width: 42, height: 42, borderRadius: 10, backgroundColor: '#1e293b', alignItems: 'center', justifyContent: 'center' },
+
+  cropArea: { position: 'relative', backgroundColor: '#000', overflow: 'hidden' },
+  shade: { position: 'absolute', backgroundColor: 'rgba(0,0,0,0.55)' },
+  cropFrame: { position: 'absolute', borderWidth: 2, borderColor: '#60a5fa' },
+  handle: { position: 'absolute', width: 32, height: 32, borderRadius: 16, backgroundColor: '#60a5fa', borderWidth: 2, borderColor: '#fff' },
 });

@@ -181,6 +181,9 @@ const STRINGS: Record<string, { ar: string; en: string }> = {
   filterGray: { ar: 'رمادي', en: 'Grayscale' },
   filterBw: { ar: 'أبيض/أسود', en: 'B&W' },
   filterContrast: { ar: 'تباين', en: 'Contrast' },
+  // القص
+  cropTitle: { ar: 'قص', en: 'Crop' },
+  cropApply: { ar: 'تطبيق القص', en: 'Apply crop' },
 };
 
 type LangState = {
