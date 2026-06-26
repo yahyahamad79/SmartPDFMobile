@@ -132,6 +132,10 @@ const STRINGS: Record<string, { ar: string; en: string }> = {
   rotateManual: { ar: 'أو دوّر يدوياً:', en: 'Or rotate manually:' },
   rotateNoPages: { ar: 'اختر صفحة واحدة على الأقل للتدوير.', en: 'Please select at least one page to rotate.' },
   rotateBtn: { ar: 'تدوير وحفظ', en: 'Rotate & Save' },
+  rotateAll: { ar: 'تدوير الكل', en: 'Rotate all' },
+  rotateReset: { ar: 'إعادة تعيين', en: 'Reset' },
+  rotateTapPreview: { ar: 'اضغط صفحة لمعاينة محتواها وتدويرها', en: 'Tap a page to preview and rotate it' },
+  rotateTapPage: { ar: 'اضغط زر التدوير تحت كل صفحة', en: 'Tap the rotate button under each page' },
 
   // images
   imgTitle: { ar: 'صور إلى PDF', en: 'Images to PDF' },
