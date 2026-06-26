@@ -18,7 +18,14 @@ export function isPdfPreviewAvailable(): boolean {
   return true;
 }
 
-function buildPdfViewerHtml(base64: string, rotationDeg: number, fallbackLabel: string) {
+function buildPdfViewerHtml(
+  base64: string,
+  rotationDeg: number,
+  fallbackLabel: string,
+  pdfJsCode: string,
+  pdfWorkerCode: string,
+) {
+  const jsString = (code: string) => JSON.stringify(code);
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -35,15 +42,31 @@ function buildPdfViewerHtml(base64: string, rotationDeg: number, fallbackLabel: 
     <canvas id="pdfCanvas"></canvas>
   </div>
   <div id="label">${fallbackLabel}${rotationDeg ? ` · ${rotationDeg}°` : ''}</div>
-  <script src="./pdf.min.txt"></script>
   <script>
-    const data = atob('${base64}');
-    const pdfData = new Uint8Array(data.length);
-    for (let i = 0; i < data.length; i += 1) {
-      pdfData[i] = data.charCodeAt(i);
-    }
-    pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.min.txt';
-    pdfjsLib.getDocument({ data: pdfData }).promise
+    const pdfJsCode = ${jsString(pdfJsCode)};
+    const pdfWorkerCode = ${jsString(pdfWorkerCode)};
+    window.addEventListener('error', (event) => {
+      event.preventDefault();
+      const message = event.message || 'unknown error';
+      document.body.innerHTML = '<div style="color:#f87171;padding:20px;text-align:center;">خطأ في معاينة PDF: ' + message + '</div>';
+    });
+
+    const pdfJsBlob = new Blob([pdfJsCode], { type: 'text/javascript' });
+    const pdfJsUrl = URL.createObjectURL(pdfJsBlob);
+    const pdfWorkerBlob = new Blob([pdfWorkerCode], { type: 'application/javascript' });
+    const pdfWorkerUrl = URL.createObjectURL(pdfWorkerBlob);
+
+    import(pdfJsUrl)
+      .then((module) => {
+        const pdfjsLib = module.default || module;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+        const data = atob('${base64}');
+        const pdfData = new Uint8Array(data.length);
+        for (let i = 0; i < data.length; i += 1) {
+          pdfData[i] = data.charCodeAt(i);
+        }
+        return pdfjsLib.getDocument({ data: pdfData }).promise;
+      })
       .then((pdf) => pdf.getPage(1))
       .then((page) => {
         const viewport = page.getViewport({ scale: 1 });
@@ -55,8 +78,9 @@ function buildPdfViewerHtml(base64: string, rotationDeg: number, fallbackLabel: 
         const context = canvas.getContext('2d');
         page.render({ canvasContext: context, viewport: scaledViewport });
       })
-      .catch(() => {
-        document.body.innerHTML = '<div style="color:#f87171;padding:20px;text-align:center;">فشل تحميل معاينة PDF</div>';
+      .catch((err) => {
+        const message = (err && err.message) ? err.message : 'unknown';
+        document.body.innerHTML = '<div style="color:#f87171;padding:20px;text-align:center;">فشل معاينة PDF: ' + message + '</div>';
       });
   </script>
 </body>
@@ -65,7 +89,6 @@ function buildPdfViewerHtml(base64: string, rotationDeg: number, fallbackLabel: 
 
 export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel = 'PDF' }: Props) {
   const [html, setHtml] = useState<string | null>(null);
-  const [baseUrl, setBaseUrl] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -81,7 +104,6 @@ export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel = '
     setError(false);
     setLoading(true);
     setHtml(null);
-    setBaseUrl(undefined);
 
     async function preparePreview() {
       try {
@@ -95,20 +117,20 @@ export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel = '
         ]);
         if (!active) return;
 
-        const loadedPdfJsUri = loadedPdfJsAsset.localUri || loadedPdfJsAsset.uri;
-        let baseDir = loadedPdfJsUri?.replace(/pdf\.min\.txt$/, '') || undefined;
-        if (baseDir && !baseDir.endsWith('/')) {
-          baseDir += '/';
-        }
-        if (!baseDir) {
-          throw new Error('Unable to resolve PDF.js base URL');
+        const pdfJsUri = loadedPdfJsAsset.localUri || loadedPdfJsAsset.uri;
+        const pdfWorkerUri = loadedPdfWorkerAsset.localUri || loadedPdfWorkerAsset.uri;
+        if (!pdfJsUri || !pdfWorkerUri) {
+          throw new Error('Unable to resolve PDF.js asset URIs');
         }
 
-        const base64 = await FileSystem.readAsStringAsync(normalizedUri, { encoding: 'base64' });
+        const [pdfJsCode, pdfWorkerCode, pdfBase64] = await Promise.all([
+          FileSystem.readAsStringAsync(pdfJsUri),
+          FileSystem.readAsStringAsync(pdfWorkerUri),
+          FileSystem.readAsStringAsync(normalizedUri, { encoding: 'base64' }),
+        ]);
         if (!active) return;
 
-        setBaseUrl(baseDir);
-        setHtml(buildPdfViewerHtml(base64, rotationDeg, fallbackLabel));
+        setHtml(buildPdfViewerHtml(pdfBase64, rotationDeg, fallbackLabel, pdfJsCode, pdfWorkerCode));
       } catch {
         if (!active) return;
         setError(true);
@@ -142,10 +164,10 @@ export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel = '
           <Text style={styles.loadingText}>جارٍ تحميل معاينة PDF...</Text>
         </View>
       )}
-      {html && baseUrl ? (
+      {html ? (
         <WebView
           originWhitelist={['*']}
-          source={{ html, baseUrl }}
+          source={{ html }}
           style={styles.webview}
           javaScriptEnabled
           domStorageEnabled
