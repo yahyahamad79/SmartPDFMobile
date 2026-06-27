@@ -106,20 +106,24 @@ export default function PdfPagePreview({ uri, page, rotationDeg = 0, fallbackLab
   const [imageUri, setImageUri] = React.useState<string | null>(null);
   const reqRef = React.useRef(0);
 
+  const [diag, setDiag] = React.useState<string>('');   // رسالة تشخيص مرئية
+  const retriedRef = React.useRef(false);
+
   const load = React.useCallback(async () => {
     const myReq = ++reqRef.current;
+    retriedRef.current = false;
     setState('loading');
     setImageUri(null);
+    setDiag('يرفع الملف ويطلب الصفحة...');
     try {
-      console.log('[PdfPreview] جلب الصفحة', page);
-      const dataUri = await fetchPageImage(uri, page, 2.0); // دقّة عالية للمعاينة
+      const dataUri = await fetchPageImage(uri, page, 2.0);
       if (myReq !== reqRef.current) return;
-      console.log('[PdfPreview] الصفحة جاهزة');
+      setDiag('الرابط: ' + dataUri.slice(0, 60));
       setImageUri(dataUri);
       setState('done');
     } catch (err: any) {
-      console.log('[PdfPreview] خطأ:', err?.message || String(err));
-      if (myReq === reqRef.current) setState('error');
+      const msg = err?.message || String(err);
+      if (myReq === reqRef.current) { setDiag('خطأ: ' + msg); setState('error'); }
     }
   }, [uri, page]);
 
@@ -134,6 +138,7 @@ export default function PdfPagePreview({ uri, page, rotationDeg = 0, fallbackLab
         <ActivityIndicator size="large" color="#60a5fa" />
         <Text style={styles.hint}>{fallbackLabel || 'PDF'}</Text>
         <Text style={styles.subHint}>جارٍ تحميل الصفحة…</Text>
+        <Text style={styles.diag}>{diag}</Text>
       </View>
     );
   }
@@ -145,13 +150,19 @@ export default function PdfPagePreview({ uri, page, rotationDeg = 0, fallbackLab
           source={{ uri: imageUri }}
           style={[styles.image, { transform: [{ rotate: `${rotationDeg}deg` }] }]}
           resizeMode="contain"
-          onError={() => {
-            // قد تكون الجلسة انتهت (410) — أفرغها وأعد المحاولة مرة
-            console.log('[PdfPreview] فشل عرض الصورة — إعادة المحاولة');
-            sessionByUri.delete(uri);
-            imageCache.clear();
-            load();
+          onError={(e) => {
+            const ne = e?.nativeEvent;
+            setDiag('فشل عرض الصورة: ' + (ne?.error || 'غير معروف'));
+            if (!retriedRef.current) {
+              retriedRef.current = true;
+              sessionByUri.delete(uri);
+              imageCache.clear();
+              load();
+            } else {
+              setState('error');
+            }
           }}
+          onLoad={() => setDiag('تم تحميل الصورة ✓')}
         />
       </View>
     );
@@ -163,6 +174,7 @@ export default function PdfPagePreview({ uri, page, rotationDeg = 0, fallbackLab
       <Ionicons name="cloud-offline-outline" size={48} color="#475569" />
       <Text style={styles.fallbackText}>{fallbackLabel || 'PDF'}</Text>
       <Text style={styles.offlineNote}>تعذّر تحميل المعاينة</Text>
+      <Text style={styles.diag}>{diag}</Text>
       <TouchableOpacity style={styles.retryBtn} onPress={load}>
         <Ionicons name="refresh" size={16} color="#fff" />
         <Text style={styles.retryText}>إعادة المحاولة</Text>
@@ -178,6 +190,7 @@ const styles = StyleSheet.create({
   subHint: { color: '#64748b', fontSize: 12 },
   fallbackText: { color: '#94a3b8', fontSize: 15, fontWeight: '700' },
   offlineNote: { color: '#64748b', fontSize: 12 },
+  diag: { color: '#f59e0b', fontSize: 10, textAlign: 'center', paddingHorizontal: 20, marginTop: 6 },
   retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1d4ed8', borderRadius: 10, paddingVertical: 9, paddingHorizontal: 18, marginTop: 4 },
   retryText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 });
