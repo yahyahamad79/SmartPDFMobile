@@ -17,7 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
 import { saveToArchive } from '@/lib/archive';
-import PdfPagePreview, { PdfThumb, clearRenderQueue, isPdfPreviewAvailable } from '@/components/PdfPagePreview';
+import PdfPagePreview, { clearPreviewSession, isPdfPreviewAvailable } from '@/components/PdfPagePreview';
 
 /**
  * Rotate Pages — محسّنة بمعاينة محتوى حقيقي.
@@ -64,7 +64,7 @@ export default function RotatePdfScreen() {
       const b64 = await readAsBase64(a.uri);
       const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
       const count = doc.getPageCount();
-      clearRenderQueue(); // أفرغ أي طلبات قديمة قبل الملف الجديد
+      clearPreviewSession(); // أفرغ جلسة الملف السابق
       setFile({ uri: a.uri, name: a.name, size: a.size ?? undefined, pageCount: count });
       setRotations({});
       setOutputName((a.name || 'rotated').replace(/\.pdf$/i, '') + '_rotated');
@@ -73,7 +73,7 @@ export default function RotatePdfScreen() {
     }
   };
 
-  const clearFile = () => { clearRenderQueue(); setFile(null); setRotations({}); };
+  const clearFile = () => { clearPreviewSession(); setFile(null); setRotations({}); };
 
   // تدوير صفحة واحدة +90 (نسبي)
   const rotatePage = (page: number) => {
@@ -211,7 +211,12 @@ export default function RotatePdfScreen() {
                       activeOpacity={0.8}
                       onPress={() => setPreviewPage(page)}
                     >
-                      <PdfThumb uri={file.uri} page={page} rotationDeg={angle} />
+                      <View style={[styles.pageIconWrap, { transform: [{ rotate: `${angle}deg` }] }]}>
+                        <Ionicons name="document-text-outline" size={32} color={rotated ? '#60a5fa' : '#64748b'} />
+                      </View>
+                      <View style={styles.tapHint}>
+                        <Ionicons name="eye-outline" size={11} color="#94a3b8" />
+                      </View>
                       <View style={styles.pageNumBadge}>
                         <Text style={styles.pageNumText}>{page}</Text>
                       </View>
@@ -329,6 +334,7 @@ const styles = StyleSheet.create({
   pageCardActive: { borderColor: '#60a5fa', borderWidth: 1 },
   pageThumb: { width: '100%', aspectRatio: 0.85, backgroundColor: '#0b1220', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8, position: 'relative', overflow: 'hidden' },
   pageIconWrap: { alignItems: 'center', justifyContent: 'center' },
+  tapHint: { position: 'absolute', bottom: 4, left: 4, backgroundColor: '#0008', borderRadius: 6, padding: 3 },
   pageNumBadge: { position: 'absolute', top: 4, left: 4, backgroundColor: '#0008', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
   pageNumText: { color: '#cbd5e1', fontSize: 10, fontWeight: '700' },
   angleBadge: { position: 'absolute', bottom: 4, right: 4, backgroundColor: '#1d4ed8', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },

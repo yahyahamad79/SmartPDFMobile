@@ -1,212 +1,132 @@
 import React from 'react';
 import { Text, View, StyleSheet, Image, ActivityIndicator, TouchableOpacity } from 'react-native';
-import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 
 /**
- * PdfPagePreview — معاينة هجينة لصفحات PDF.
- * ============================================
- * الفلسفة: التطبيق يبقى offline بالكامل. المعاينة ميزة إضافية تعمل
- * فقط عند توفّر إنترنت، دون أي مكتبة native (تعمل في Expo Go).
+ * PdfPagePreview — معاينة صفحة PDF عند الطلب فقط (الخيار ب).
+ * ===========================================================
+ * الفلسفة:
+ *  - التطبيق يفتح الملف ويعمل offline بالكامل (عبر pdf-lib في الشاشة).
+ *  - لا تُطلب أي صورة تلقائياً. الصورة تُجلب من السيرفر فقط عند فتح
+ *    المعاينة الكبيرة لصفحة محددة (ضغط المستخدم).
+ *  - كفاءة عالية للملفات الكبيرة (91 صفحة): يُرفع الملف مرة واحدة
+ *    (/upload يعيد sessionId)، ثم تُطلب الصفحات بالمعرّف بلا إعادة رفع.
  *
- * الآلية:
- *  - عند فتح المعاينة، نرفع صفحة PDF المطلوبة فقط إلى الخادم.
- *  - الخادم يصيّرها صورة PNG ويعيدها.
- *  - نعرضها عبر <Image> عادية (يدعمها Expo Go وكل الأجهزة).
- *  - إن لا إنترنت أو فشل الطلب: نعرض بديلاً آمناً (أيقونة + رقم)،
- *    والتدوير يبقى يعمل offline عبر pdf-lib.
- *
- * لا توجد مكتبة native — لا مشاكل بناء، يعمل فوراً في Expo Go.
+ * لا مكتبة native — يعرض صورة عادية <Image>. يعمل في Expo Go.
  */
 
-// للتوافق مع الاستيراد القديم — المعاينة الآن عبر الخادم (متاحة دائماً، تحتاج نت فقط)
+const BASE = 'https://smartpdf-trial-server.onrender.com';
+const UPLOAD_ENDPOINT = `${BASE}/upload`;
+
+// ===== جلسة الرفع المشتركة (رفع مرة واحدة لكل ملف) =====
+// مفتاحها uri الملف؛ تخزّن sessionId القادم من السيرفر.
+const sessionByUri = new Map<string, string>();
+// تخزين مؤقت للصور المعروضة (مفتاح: uri#page) — لا إعادة طلب.
+const imageCache = new Map<string, string>();
+
+export function clearPreviewSession(uri?: string) {
+  if (uri) {
+    sessionByUri.delete(uri);
+    // امسح صور هذا الملف من الكاش
+    for (const k of Array.from(imageCache.keys())) {
+      if (k.startsWith(uri + '#')) imageCache.delete(k);
+    }
+  } else {
+    sessionByUri.clear();
+    imageCache.clear();
+  }
+}
+
+// للتوافق مع الاستيراد القديم
 export function isPdfPreviewAvailable(): boolean { return true; }
 
-const RENDER_ENDPOINT = 'https://smartpdf-trial-server.onrender.com/render-page';
+// يرفع الملف مرة واحدة ويعيد sessionId (يعيد المخزّن إن وُجد)
+async function ensureSession(uri: string): Promise<string> {
+  const existing = sessionByUri.get(uri);
+  if (existing) return existing;
+  const form = new FormData();
+  // @ts-ignore — صيغة ملف React Native
+  form.append('file', { uri, name: 'doc.pdf', type: 'application/pdf' });
+  const resp = await fetch(UPLOAD_ENDPOINT, { method: 'POST', body: form });
+  if (!resp.ok) throw new Error(`upload failed: ${resp.status}`);
+  const json = await resp.json();
+  const sid = json.sessionId as string;
+  sessionByUri.set(uri, sid);
+  return sid;
+}
 
-// تخزين مؤقت مشترك للصور المصغّرة (مفتاح: uri+صفحة) — يمنع إعادة الطلب.
-const thumbCache = new Map<string, string>();
+// يجلب صورة صفحة عبر الجلسة (يعيد الرفع تلقائياً إن انتهت الجلسة 410)
+async function fetchPageImage(uri: string, page: number, zoom: number): Promise<string> {
+  const cacheKey = `${uri}#${page}@${zoom}`;
+  const cached = imageCache.get(cacheKey);
+  if (cached) return cached;
 
-// ===== طابور التحميل العالمي =====
-// يضمن طلباً واحداً نشطاً في كل لحظة (لا طلبات متزامنة تُغرق السيرفر).
-// كل مصغّرة تنضمّ للطابور، وتُعالَج تباعاً.
-type QueueTask = () => Promise<void>;
-const renderQueue: QueueTask[] = [];
-let queueActive = false;
+  const getOnce = async (sid: string) => {
+    const url = `${BASE}/render/${sid}/${page}?zoom=${zoom}`;
+    return await fetch(url);
+  };
 
-async function processQueue() {
-  if (queueActive) return;
-  queueActive = true;
-  while (renderQueue.length > 0) {
-    const task = renderQueue.shift();
-    if (task) {
-      try { await task(); } catch { /* تجاهل، نكمل */ }
-    }
+  let sid = await ensureSession(uri);
+  let resp = await getOnce(sid);
+  if (resp.status === 410) {
+    // الجلسة انتهت — أعد الرفع مرة واحدة وحاول ثانيةً
+    sessionByUri.delete(uri);
+    sid = await ensureSession(uri);
+    resp = await getOnce(sid);
   }
-  queueActive = false;
-}
+  if (!resp.ok) throw new Error(`render failed: ${resp.status}`);
 
-function enqueueRender(task: QueueTask) {
-  renderQueue.push(task);
-  processQueue();
-}
-
-// إفراغ الطابور (عند تغيير الملف مثلاً) لتجنّب طلبات قديمة
-export function clearRenderQueue() {
-  renderQueue.length = 0;
+  const blob = await resp.blob();
+  const dataUri: string = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('read failed'));
+    reader.readAsDataURL(blob);
+  });
+  imageCache.set(cacheKey, dataUri);
+  return dataUri;
 }
 
 type Props = {
-  uri: string;            // file:// للملف المحلي
-  page: number;           // رقم الصفحة (1-based)
-  rotationDeg?: number;   // زاوية العرض للمعاينة فقط
+  uri: string;
+  page: number;           // 1-based
+  rotationDeg?: number;
   fallbackLabel?: string;
 };
 
-type State = 'idle' | 'loading' | 'done' | 'error' | 'offline';
-
-
-/**
- * PdfThumb — صورة مصغّرة لصفحة واحدة (للشبكة).
- * تجلب الصفحة بدقّة منخفضة من الخادم وتخزّنها مؤقتاً.
- * تحميل كسول: تطلب فقط عند ظهورها، ولا تعيد الطلب إن كانت مخزّنة.
- */
-export function PdfThumb({ uri, page, rotationDeg = 0 }: { uri: string; page: number; rotationDeg?: number }) {
-  const cacheKey = `${uri}#${page}`;
-  const [img, setImg] = React.useState<string | null>(() => thumbCache.get(cacheKey) || null);
-  const [failed, setFailed] = React.useState(false);
+export default function PdfPagePreview({ uri, page, rotationDeg = 0, fallbackLabel }: Props) {
+  const [state, setState] = React.useState<'loading' | 'done' | 'error'>('loading');
+  const [imageUri, setImageUri] = React.useState<string | null>(null);
   const reqRef = React.useRef(0);
 
-  // الطلب الفعلي (يُستدعى من داخل الطابور — طلب واحد في كل لحظة)
-  const doFetch = React.useCallback(async () => {
-    if (thumbCache.has(cacheKey)) { setImg(thumbCache.get(cacheKey)!); return; }
-    const myReq = reqRef.current;
-    return await new Promise<void>((resolve) => {
-      (async () => {
-        try {
-          const form = new FormData();
-          // @ts-ignore
-          form.append('file', { uri, name: 'doc.pdf', type: 'application/pdf' });
-          form.append('page', String(Math.max(0, page - 1)));
-          form.append('zoom', '1.0'); // دقّة منخفضة للمصغّرات (أسرع وأخف)
-          const resp = await fetch(RENDER_ENDPOINT, { method: 'POST', body: form });
-          if (myReq !== reqRef.current) { resolve(); return; }
-          if (!resp.ok) { setFailed(true); resolve(); return; }
-          const blob = await resp.blob();
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            if (myReq === reqRef.current) {
-              const result = reader.result as string;
-              thumbCache.set(cacheKey, result);
-              setImg(result);
-            }
-            resolve();
-          };
-          reader.onerror = () => { if (myReq === reqRef.current) setFailed(true); resolve(); };
-          reader.readAsDataURL(blob);
-        } catch {
-          if (myReq === reqRef.current) setFailed(true);
-          resolve();
-        }
-      })();
-    });
-  }, [uri, page, cacheKey]);
-
-  // إضافة الطلب للطابور (يُعالَج تباعاً، طلب واحد في كل لحظة)
-  const load = React.useCallback(() => {
-    if (thumbCache.has(cacheKey)) { setImg(thumbCache.get(cacheKey)!); return; }
-    reqRef.current++;
-    setFailed(false);
-    enqueueRender(() => doFetch());
-  }, [cacheKey, doFetch]);
-
-  React.useEffect(() => {
-    if (!img) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uri, page]);
-
-  if (img) {
-    return (
-      <Image
-        source={{ uri: img }}
-        style={{ width: '100%', height: '100%', transform: [{ rotate: `${rotationDeg}deg` }] }}
-        resizeMode="contain"
-      />
-    );
-  }
-
-  if (failed) {
-    return (
-      <TouchableOpacity onPress={load} style={styles.thumbCenter}>
-        <Ionicons name="refresh" size={20} color="#64748b" />
-      </TouchableOpacity>
-    );
-  }
-
-  return (
-    <View style={styles.thumbCenter}>
-      <ActivityIndicator size="small" color="#60a5fa" />
-    </View>
-  );
-}
-
-export default function PdfPagePreview({ uri, page, rotationDeg = 0, fallbackLabel }: Props) {
-  const [state, setState] = React.useState<State>('idle');
-  const [imageUri, setImageUri] = React.useState<string | null>(null);
-  const reqIdRef = React.useRef(0);
-
-  // نستخدم fetch لرفع الصفحة واستقبال الصورة كـ base64 (يعمل في Expo Go)
-  const loadViaFetch = React.useCallback(async () => {
-    const myReq = ++reqIdRef.current;
+  const load = React.useCallback(async () => {
+    const myReq = ++reqRef.current;
     setState('loading');
     setImageUri(null);
     try {
-      console.log('[PdfPreview] طلب تصيير الصفحة', page, 'من', uri);
-      const form = new FormData();
-      // @ts-ignore — صيغة ملف React Native
-      form.append('file', { uri, name: 'doc.pdf', type: 'application/pdf' });
-      form.append('page', String(Math.max(0, page - 1)));
-
-      const resp = await fetch(RENDER_ENDPOINT, { method: 'POST', body: form });
-      if (myReq !== reqIdRef.current) return;
-
-      console.log('[PdfPreview] استجابة الخادم:', resp.status);
-      if (!resp.ok) {
-        console.log('[PdfPreview] فشل الخادم — الحالة:', resp.status);
-        setState('error');
-        return;
-      }
-
-      // نحوّل الرد (PNG) إلى base64 لعرضه في <Image>
-      const blob = await resp.blob();
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (myReq !== reqIdRef.current) return;
-        const result = reader.result as string; // data:image/png;base64,...
-        console.log('[PdfPreview] صورة جاهزة، الطول:', result?.length);
-        setImageUri(result);
-        setState('done');
-      };
-      reader.onerror = () => { if (myReq === reqIdRef.current) setState('error'); };
-      reader.readAsDataURL(blob);
+      console.log('[PdfPreview] جلب الصفحة', page);
+      const dataUri = await fetchPageImage(uri, page, 2.0); // دقّة عالية للمعاينة
+      if (myReq !== reqRef.current) return;
+      console.log('[PdfPreview] الصفحة جاهزة');
+      setImageUri(dataUri);
+      setState('done');
     } catch (err: any) {
-      console.log('[PdfPreview] خطأ في الاتصال:', err?.message || String(err));
-      if (myReq === reqIdRef.current) setState('error');
+      console.log('[PdfPreview] خطأ:', err?.message || String(err));
+      if (myReq === reqRef.current) setState('error');
     }
   }, [uri, page]);
 
-  // حمّل تلقائياً عند تغيّر الصفحة
   React.useEffect(() => {
-    loadViaFetch();
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uri, page]);
 
-  // ===== العرض =====
   if (state === 'loading') {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#60a5fa" />
         <Text style={styles.hint}>{fallbackLabel || 'PDF'}</Text>
+        <Text style={styles.subHint}>جارٍ تحميل الصفحة…</Text>
       </View>
     );
   }
@@ -223,13 +143,13 @@ export default function PdfPagePreview({ uri, page, rotationDeg = 0, fallbackLab
     );
   }
 
-  // error / offline / idle => بديل آمن + زر إعادة المحاولة
+  // error
   return (
     <View style={styles.center}>
       <Ionicons name="cloud-offline-outline" size={48} color="#475569" />
       <Text style={styles.fallbackText}>{fallbackLabel || 'PDF'}</Text>
-      <Text style={styles.offlineNote}>المعاينة تحتاج اتصالاً بالإنترنت</Text>
-      <TouchableOpacity style={styles.retryBtn} onPress={loadViaFetch}>
+      <Text style={styles.offlineNote}>تعذّر تحميل المعاينة</Text>
+      <TouchableOpacity style={styles.retryBtn} onPress={load}>
         <Ionicons name="refresh" size={16} color="#fff" />
         <Text style={styles.retryText}>إعادة المحاولة</Text>
       </TouchableOpacity>
@@ -238,11 +158,11 @@ export default function PdfPagePreview({ uri, page, rotationDeg = 0, fallbackLab
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b1220', gap: 12 },
+  center: { flex: 1, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b1220', gap: 10 },
   image: { width: '100%', height: '100%' },
-  hint: { color: '#64748b', fontSize: 13, fontWeight: '600' },
+  hint: { color: '#94a3b8', fontSize: 14, fontWeight: '700' },
+  subHint: { color: '#64748b', fontSize: 12 },
   fallbackText: { color: '#94a3b8', fontSize: 15, fontWeight: '700' },
-  thumbCenter: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
   offlineNote: { color: '#64748b', fontSize: 12 },
   retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1d4ed8', borderRadius: 10, paddingVertical: 9, paddingHorizontal: 18, marginTop: 4 },
   retryText: { color: '#fff', fontSize: 13, fontWeight: '700' },

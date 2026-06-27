@@ -134,7 +134,7 @@ const STRINGS: Record<string, { ar: string; en: string }> = {
   rotateBtn: { ar: 'تدوير وحفظ', en: 'Rotate & Save' },
   rotateAll: { ar: 'تدوير الكل', en: 'Rotate all' },
   rotateReset: { ar: 'إعادة تعيين', en: 'Reset' },
-  rotateTapPreview: { ar: 'اضغط صفحة لمعاينة محتواها وتدويرها', en: 'Tap a page to preview and rotate it' },
+  rotateTapPreview: { ar: 'اضغط أي صفحة لعرض محتواها الحقيقي (يتطلب إنترنت)', en: 'Tap any page to view its real content (needs internet)' },
   rotateTapPage: { ar: 'اضغط زر التدوير تحت كل صفحة', en: 'Tap the rotate button under each page' },
 
   // images
