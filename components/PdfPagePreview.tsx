@@ -3,194 +3,143 @@ import { Text, View, StyleSheet, Image, ActivityIndicator, TouchableOpacity } fr
 import { Ionicons } from '@expo/vector-icons';
 
 /**
- * PdfPagePreview — معاينة صفحة PDF عند الطلب فقط (الخيار ب).
- * ===========================================================
- * الفلسفة:
- *  - التطبيق يفتح الملف ويعمل offline بالكامل (عبر pdf-lib في الشاشة).
- *  - لا تُطلب أي صورة تلقائياً. الصورة تُجلب من السيرفر فقط عند فتح
- *    المعاينة الكبيرة لصفحة محددة (ضغط المستخدم).
- *  - كفاءة عالية للملفات الكبيرة (91 صفحة): يُرفع الملف مرة واحدة
- *    (/upload يعيد sessionId)، ثم تُطلب الصفحات بالمعرّف بلا إعادة رفع.
- *
- * لا مكتبة native — يعرض صورة عادية <Image>. يعمل في Expo Go.
+ * PdfPagePreview — معاينة صفحة PDF عبر السيرفر (نسخة نه).
+ * =========================================================
+ * - يعمل في Expo Go (لا مكتبة native).
+ * - يرفع الملف مرة واحدة (/upload -> sessionId)، ثم يعرض الصفحة
+ *   عبر رابط مباشر <Image> (الأسلوب الأوثق في React Native).
+ * - علامة مميّزة "HYBRID_v3" أدناه للتأكد أن هذه النسخة وصلت فعلاً.
  */
 
+// ====== علامة التحقق: إن رأيت HYBRID_v3 في الشاشة، النسخة الصحيحة وصلت ======
+export const PREVIEW_VERSION = 'HYBRID_v3';
+
 const BASE = 'https://smartpdf-trial-server.onrender.com';
-const UPLOAD_ENDPOINT = `${BASE}/upload`;
 
-// ===== جلسة الرفع المشتركة (رفع مرة واحدة لكل ملف) =====
-// مفتاحها uri الملف؛ تخزّن sessionId القادم من السيرفر.
 const sessionByUri = new Map<string, string>();
-// تخزين مؤقت للصور المعروضة (مفتاح: uri#page) — لا إعادة طلب.
-const imageCache = new Map<string, string>();
+const totalByUri = new Map<string, number>();
 
-export function clearPreviewSession(uri?: string) {
-  if (uri) {
-    sessionByUri.delete(uri);
-    // امسح صور هذا الملف من الكاش
-    for (const k of Array.from(imageCache.keys())) {
-      if (k.startsWith(uri + '#')) imageCache.delete(k);
-    }
-    totalByUri.delete(uri);
-  } else {
-    sessionByUri.clear();
-    imageCache.clear();
-    totalByUri.clear();
-  }
-}
-
-// للتوافق مع الاستيراد القديم
 export function isPdfPreviewAvailable(): boolean { return true; }
 
-// يرفع الملف مرة واحدة ويعيد sessionId (يعيد المخزّن إن وُجد)
-async function ensureSession(uri: string): Promise<string> {
-  const existing = sessionByUri.get(uri);
-  if (existing) return existing;
+export function clearPreviewSession(uri?: string) {
+  if (uri) { sessionByUri.delete(uri); totalByUri.delete(uri); }
+  else { sessionByUri.clear(); totalByUri.clear(); }
+}
+
+// يرفع الملف مرة واحدة، يعيد { sid, total }
+async function ensureSession(uri: string): Promise<{ sid: string; total: number }> {
+  const sid0 = sessionByUri.get(uri);
+  const tot0 = totalByUri.get(uri);
+  if (sid0 && tot0) return { sid: sid0, total: tot0 };
+
   const form = new FormData();
   // @ts-ignore — صيغة ملف React Native
   form.append('file', { uri, name: 'doc.pdf', type: 'application/pdf' });
-  const resp = await fetch(UPLOAD_ENDPOINT, { method: 'POST', body: form });
-  if (!resp.ok) throw new Error(`upload failed: ${resp.status}`);
-  const json = await resp.json();
-  const sid = json.sessionId as string;
-  sessionByUri.set(uri, sid);
-  return sid;
+  const resp = await fetch(`${BASE}/upload`, { method: 'POST', body: form });
+  if (!resp.ok) throw new Error(`upload ${resp.status}`);
+  const j = await resp.json();
+  sessionByUri.set(uri, j.sessionId);
+  totalByUri.set(uri, j.totalPages);
+  return { sid: j.sessionId, total: j.totalPages };
 }
 
-
-// يعيد العدد الحقيقي للصفحات من السيرفر (بعد الرفع). يُستخدم لتصحيح
-// العدد إن قرأه pdf-lib خطأً. متاح فقط عند الاتصال.
-const totalByUri = new Map<string, number>();
+// يعيد العدد الحقيقي من السيرفر (لتصحيح pdf-lib)
 export async function getServerPageCount(uri: string): Promise<number | null> {
-  try {
-    if (totalByUri.has(uri)) return totalByUri.get(uri)!;
-    const form = new FormData();
-    // @ts-ignore
-    form.append('file', { uri, name: 'doc.pdf', type: 'application/pdf' });
-    const resp = await fetch(UPLOAD_ENDPOINT, { method: 'POST', body: form });
-    if (!resp.ok) return null;
-    const json = await resp.json();
-    const sid = json.sessionId as string;
-    const total = json.totalPages as number;
-    if (sid) sessionByUri.set(uri, sid);   // أعد استخدام نفس الجلسة
-    if (total) { totalByUri.set(uri, total); return total; }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-// يجلب رابط صورة صفحة عبر الجلسة (يعيد الرفع تلقائياً إن انتهت 410).
-// نعيد رابطاً مباشراً يحمّله <Image> (أكثر موثوقية من blob+FileReader في RN).
-async function fetchPageImage(uri: string, page: number, zoom: number): Promise<string> {
-  const cacheKey = `${uri}#${page}@${zoom}`;
-  const cached = imageCache.get(cacheKey);
-  if (cached) return cached;
-
-  // تأكّد من وجود جلسة (رفع مرة واحدة)، ثم أعد الرابط المباشر.
-  const sid = await ensureSession(uri);
-  const url = `${BASE}/render/${sid}/${page}?zoom=${zoom}`;
-  imageCache.set(cacheKey, url);
-  return url;
+  try { const { total } = await ensureSession(uri); return total || null; }
+  catch { return null; }
 }
 
 type Props = {
   uri: string;
-  page: number;           // 1-based
+  page: number;          // 1-based
   rotationDeg?: number;
   fallbackLabel?: string;
 };
 
 export default function PdfPagePreview({ uri, page, rotationDeg = 0, fallbackLabel }: Props) {
-  const [state, setState] = React.useState<'loading' | 'done' | 'error'>('loading');
-  const [imageUri, setImageUri] = React.useState<string | null>(null);
+  const [imgUrl, setImgUrl] = React.useState<string | null>(null);
+  const [status, setStatus] = React.useState<'loading' | 'done' | 'error'>('loading');
+  const [msg, setMsg] = React.useState('');
   const reqRef = React.useRef(0);
-
-  const [diag, setDiag] = React.useState<string>('');   // رسالة تشخيص مرئية
-  const retriedRef = React.useRef(false);
+  const triedRef = React.useRef(false);
 
   const load = React.useCallback(async () => {
-    const myReq = ++reqRef.current;
-    retriedRef.current = false;
-    setState('loading');
-    setImageUri(null);
-    setDiag('يرفع الملف ويطلب الصفحة...');
+    const my = ++reqRef.current;
+    triedRef.current = false;
+    setStatus('loading');
+    setImgUrl(null);
+    setMsg('جارٍ رفع الملف وطلب الصفحة…');
     try {
-      const dataUri = await fetchPageImage(uri, page, 2.0);
-      if (myReq !== reqRef.current) return;
-      setDiag('الرابط: ' + dataUri.slice(0, 60));
-      setImageUri(dataUri);
-      setState('done');
-    } catch (err: any) {
-      const msg = err?.message || String(err);
-      if (myReq === reqRef.current) { setDiag('خطأ: ' + msg); setState('error'); }
+      const { sid } = await ensureSession(uri);
+      if (my !== reqRef.current) return;
+      const url = `${BASE}/render/${sid}/${page}?zoom=2.0&t=${Date.now()}`;
+      setImgUrl(url);
+      setMsg('');
+      // status يبقى loading حتى onLoad/onError للصورة
+    } catch (e: any) {
+      if (my === reqRef.current) { setMsg('خطأ: ' + (e?.message || String(e))); setStatus('error'); }
     }
   }, [uri, page]);
 
-  React.useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uri, page]);
+  React.useEffect(() => { load(); /* eslint-disable-next-line */ }, [uri, page]);
 
-  if (state === 'loading') {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#60a5fa" />
-        <Text style={styles.hint}>{fallbackLabel || 'PDF'}</Text>
-        <Text style={styles.subHint}>جارٍ تحميل الصفحة…</Text>
-        <Text style={styles.diag}>{diag}</Text>
-      </View>
-    );
-  }
-
-  if (state === 'done' && imageUri) {
-    return (
-      <View style={styles.center}>
-        <Image
-          source={{ uri: imageUri }}
-          style={[styles.image, { transform: [{ rotate: `${rotationDeg}deg` }] }]}
-          resizeMode="contain"
-          onError={(e) => {
-            const ne = e?.nativeEvent;
-            setDiag('فشل عرض الصورة: ' + (ne?.error || 'غير معروف'));
-            if (!retriedRef.current) {
-              retriedRef.current = true;
-              sessionByUri.delete(uri);
-              imageCache.clear();
-              load();
-            } else {
-              setState('error');
-            }
-          }}
-          onLoad={() => setDiag('تم تحميل الصورة ✓')}
-        />
-      </View>
-    );
-  }
-
-  // error
   return (
     <View style={styles.center}>
-      <Ionicons name="cloud-offline-outline" size={48} color="#475569" />
-      <Text style={styles.fallbackText}>{fallbackLabel || 'PDF'}</Text>
-      <Text style={styles.offlineNote}>تعذّر تحميل المعاينة</Text>
-      <Text style={styles.diag}>{diag}</Text>
-      <TouchableOpacity style={styles.retryBtn} onPress={load}>
-        <Ionicons name="refresh" size={16} color="#fff" />
-        <Text style={styles.retryText}>إعادة المحاولة</Text>
-      </TouchableOpacity>
+      {imgUrl ? (
+        <Image
+          source={{ uri: imgUrl }}
+          style={[styles.image, { transform: [{ rotate: `${rotationDeg}deg` }] }]}
+          resizeMode="contain"
+          onLoad={() => setStatus('done')}
+          onError={(e) => {
+            const err = e?.nativeEvent?.error || 'فشل التحميل';
+            if (!triedRef.current) {
+              // قد تكون الجلسة انتهت — أعد الرفع مرة
+              triedRef.current = true;
+              sessionByUri.delete(uri);
+              setMsg('إعادة المحاولة…');
+              load();
+            } else {
+              setMsg('فشل عرض الصورة: ' + err);
+              setStatus('error');
+            }
+          }}
+        />
+      ) : null}
+
+      {status === 'loading' && (
+        <View style={styles.overlay}>
+          <ActivityIndicator size="large" color="#60a5fa" />
+          <Text style={styles.hint}>{fallbackLabel || 'PDF'}</Text>
+          {!!msg && <Text style={styles.msg}>{msg}</Text>}
+          <Text style={styles.ver}>{PREVIEW_VERSION}</Text>
+        </View>
+      )}
+
+      {status === 'error' && (
+        <View style={styles.overlay}>
+          <Ionicons name="cloud-offline-outline" size={46} color="#475569" />
+          <Text style={styles.fallbackText}>{fallbackLabel || 'PDF'}</Text>
+          {!!msg && <Text style={styles.msg}>{msg}</Text>}
+          <TouchableOpacity style={styles.retry} onPress={load}>
+            <Ionicons name="refresh" size={16} color="#fff" />
+            <Text style={styles.retryText}>إعادة المحاولة</Text>
+          </TouchableOpacity>
+          <Text style={styles.ver}>{PREVIEW_VERSION}</Text>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b1220', gap: 10 },
+  center: { flex: 1, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b1220' },
   image: { width: '100%', height: '100%' },
+  overlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 8 },
   hint: { color: '#94a3b8', fontSize: 14, fontWeight: '700' },
-  subHint: { color: '#64748b', fontSize: 12 },
+  msg: { color: '#f59e0b', fontSize: 11, textAlign: 'center', paddingHorizontal: 24 },
+  ver: { color: '#334155', fontSize: 9, position: 'absolute', bottom: 6 },
   fallbackText: { color: '#94a3b8', fontSize: 15, fontWeight: '700' },
-  offlineNote: { color: '#64748b', fontSize: 12 },
-  diag: { color: '#f59e0b', fontSize: 10, textAlign: 'center', paddingHorizontal: 20, marginTop: 6 },
-  retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1d4ed8', borderRadius: 10, paddingVertical: 9, paddingHorizontal: 18, marginTop: 4 },
+  retry: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1d4ed8', borderRadius: 10, paddingVertical: 9, paddingHorizontal: 18, marginTop: 4 },
   retryText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 });

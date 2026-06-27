@@ -21,7 +21,7 @@ import PdfPagePreview, { clearPreviewSession, getServerPageCount, isPdfPreviewAv
 
 /**
  * Rotate Pages — محسّنة بمعاينة محتوى حقيقي.
- * - معاينة محتوى الـ PDF عبر react-native-pdf-renderer (مع fallback آمن).
+ * - معاينة محتوى الـ PDF عبر السيرفر (صورة لكل صفحة عند الطلب).
  * - تدوير لكل صفحة على حدة (0/90/180/270) — المستخدم يضبط كل صفحة.
  * - التطبيق الفعلي عبر pdf-lib عند الحفظ.
  * - يحفظ في الأرشيف ويوجّه لشاشة النتيجة (يحترم مجلد الإعدادات).
@@ -64,15 +64,12 @@ export default function RotatePdfScreen() {
       const b64 = await readAsBase64(a.uri);
       const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
       const count = doc.getPageCount();
-      clearPreviewSession(); // أفرغ جلسة الملف السابق
+      clearPreviewSession();
       setFile({ uri: a.uri, name: a.name, size: a.size ?? undefined, pageCount: count });
       setRotations({});
-      // تصحيح عدد الصفحات من السيرفر في الخلفية (إن قرأ pdf-lib خطأً).
-      // لا يعطّل الفتح — يحدث بهدوء، ويُحدّث العدد إن اختلف.
-      getServerPageCount(a.uri).then((serverCount) => {
-        if (serverCount && serverCount !== count) {
-          console.log('[Rotate] تصحيح عدد الصفحات:', count, '->', serverCount);
-          setFile((prev) => (prev && prev.uri === a.uri ? { ...prev, pageCount: serverCount } : prev));
+      getServerPageCount(a.uri).then((sc) => {
+        if (sc && sc !== count) {
+          setFile((prev) => (prev && prev.uri === a.uri ? { ...prev, pageCount: sc } : prev));
         }
       }).catch(() => {});
       setOutputName((a.name || 'rotated').replace(/\.pdf$/i, '') + '_rotated');
@@ -81,7 +78,7 @@ export default function RotatePdfScreen() {
     }
   };
 
-  const clearFile = () => { clearPreviewSession(); setFile(null); setRotations({}); };
+  const clearFile = () => { setFile(null); setRotations({}); };
 
   // تدوير صفحة واحدة +90 (نسبي)
   const rotatePage = (page: number) => {
@@ -220,10 +217,7 @@ export default function RotatePdfScreen() {
                       onPress={() => setPreviewPage(page)}
                     >
                       <View style={[styles.pageIconWrap, { transform: [{ rotate: `${angle}deg` }] }]}>
-                        <Ionicons name="document-text-outline" size={32} color={rotated ? '#60a5fa' : '#64748b'} />
-                      </View>
-                      <View style={styles.tapHint}>
-                        <Ionicons name="eye-outline" size={11} color="#94a3b8" />
+                        <Ionicons name="document-outline" size={30} color={rotated ? '#60a5fa' : '#64748b'} />
                       </View>
                       <View style={styles.pageNumBadge}>
                         <Text style={styles.pageNumText}>{page}</Text>
@@ -340,9 +334,8 @@ const styles = StyleSheet.create({
   pagesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
   pageCard: { width: '31%', backgroundColor: '#1e293b', borderRadius: 12, padding: 8, borderWidth: 0.5, borderColor: '#2d3a4f', alignItems: 'center' },
   pageCardActive: { borderColor: '#60a5fa', borderWidth: 1 },
-  pageThumb: { width: '100%', aspectRatio: 0.85, backgroundColor: '#0b1220', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8, position: 'relative', overflow: 'hidden' },
+  pageThumb: { width: '100%', aspectRatio: 0.85, backgroundColor: '#0b1220', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8, position: 'relative' },
   pageIconWrap: { alignItems: 'center', justifyContent: 'center' },
-  tapHint: { position: 'absolute', bottom: 4, left: 4, backgroundColor: '#0008', borderRadius: 6, padding: 3 },
   pageNumBadge: { position: 'absolute', top: 4, left: 4, backgroundColor: '#0008', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
   pageNumText: { color: '#cbd5e1', fontSize: 10, fontWeight: '700' },
   angleBadge: { position: 'absolute', bottom: 4, right: 4, backgroundColor: '#1d4ed8', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
