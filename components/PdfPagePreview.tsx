@@ -1,122 +1,131 @@
 import React from 'react';
-import { Text, View, StyleSheet, UIManager } from 'react-native';
+import { Text, View, StyleSheet, Image, ActivityIndicator, TouchableOpacity } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 
 /**
- * PdfPagePreview — معاينة محتوى صفحات PDF بشكل آمن.
- * ====================================================
- * يحاول استخدام react-native-pdf-renderer لعرض المحتوى الحقيقي.
- * إن لم تكن المكتبة متوفّرة أو فشل التصيير (مثلاً في Expo Go أو مشكلة بناء)،
- * يسقط تلقائياً إلى عرض بديل آمن (لا ينهار التطبيق أبداً).
+ * PdfPagePreview — معاينة هجينة لصفحات PDF.
+ * ============================================
+ * الفلسفة: التطبيق يبقى offline بالكامل. المعاينة ميزة إضافية تعمل
+ * فقط عند توفّر إنترنت، دون أي مكتبة native (تعمل في Expo Go).
  *
- * هذا fallback مزدوج الحماية:
- *  1) require داخل try (يلتقط غياب الوحدة).
- *  2) ErrorBoundary يلتقط أي خطأ تصيير وقت التشغيل.
+ * الآلية:
+ *  - عند فتح المعاينة، نرفع صفحة PDF المطلوبة فقط إلى الخادم.
+ *  - الخادم يصيّرها صورة PNG ويعيدها.
+ *  - نعرضها عبر <Image> عادية (يدعمها Expo Go وكل الأجهزة).
+ *  - إن لا إنترنت أو فشل الطلب: نعرض بديلاً آمناً (أيقونة + رقم)،
+ *    والتدوير يبقى يعمل offline عبر pdf-lib.
+ *
+ * لا توجد مكتبة native — لا مشاكل بناء، يعمل فوراً في Expo Go.
  */
 
-// محاولة تحميل الوحدة بأمان (لا تتعطّل إن غابت)
-let PdfRendererView: any = null;
-let loadError = false;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const mod = require('react-native-pdf-renderer');
-  PdfRendererView = mod?.default ?? mod?.PdfRendererView ?? null;
-} catch {
-  loadError = true;
-}
+// للتوافق مع الاستيراد القديم — المعاينة الآن عبر الخادم (متاحة دائماً، تحتاج نت فقط)
+export function isPdfPreviewAvailable(): boolean { return true; }
 
-// التحقق أن المكوّن الأصلي (ViewManager) مسجّل فعلاً في الـ runtime.
-// في Expo Go أو بناء بلا المكتبة، يكون require ناجحاً لكن ViewManager غائباً،
-// فيظهر خطأ "Can't find ViewManager 'RNPDFRenderView'". هذا الفحص يمنعه.
-function isNativeViewRegistered(): boolean {
-  try {
-    const names = ['RNPDFRenderView', 'RNPdfRendererView', 'PdfRendererView'];
-    const cfg: any = (UIManager as any).getViewManagerConfig
-      ? (UIManager as any).getViewManagerConfig.bind(UIManager)
-      : null;
-    if (cfg) {
-      return names.some((n) => !!cfg(n));
-    }
-    // fallback لإصدارات قديمة: تحقق من وجود الاسم على UIManager
-    return names.some((n) => !!(UIManager as any)[n]);
-  } catch {
-    return false;
-  }
-}
-
-const nativeReady = !loadError && !!PdfRendererView && isNativeViewRegistered();
+const RENDER_ENDPOINT = 'https://smartpdf-trial-server.onrender.com/render-page';
 
 type Props = {
-  uri: string;           // file:// للملف المحلي
-  rotationDeg?: number;  // زاوية العرض الإضافية للمعاينة فقط
+  uri: string;            // file:// للملف المحلي
+  page: number;           // رقم الصفحة (1-based)
+  rotationDeg?: number;   // زاوية العرض للمعاينة فقط
   fallbackLabel?: string;
 };
 
-class PdfErrorBoundary extends React.Component<
-  { children: React.ReactNode; fallback: React.ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch() { /* يُمتص الخطأ بهدوء */ }
-  render() {
-    if (this.state.hasError) return this.props.fallback;
-    return this.props.children;
-  }
-}
+type State = 'idle' | 'loading' | 'done' | 'error' | 'offline';
 
-export function isPdfPreviewAvailable(): boolean {
-  return nativeReady;
-}
+export default function PdfPagePreview({ uri, page, rotationDeg = 0, fallbackLabel }: Props) {
+  const [state, setState] = React.useState<State>('idle');
+  const [imageUri, setImageUri] = React.useState<string | null>(null);
+  const reqIdRef = React.useRef(0);
 
-export default function PdfPagePreview({ uri, rotationDeg = 0, fallbackLabel }: Props) {
-  const [box, setBox] = React.useState({ width: 0, height: 0 });
+  // نستخدم fetch لرفع الصفحة واستقبال الصورة كـ base64 (يعمل في Expo Go)
+  const loadViaFetch = React.useCallback(async () => {
+    const myReq = ++reqIdRef.current;
+    setState('loading');
+    setImageUri(null);
+    try {
+      console.log('[PdfPreview] طلب تصيير الصفحة', page, 'من', uri);
+      const form = new FormData();
+      // @ts-ignore — صيغة ملف React Native
+      form.append('file', { uri, name: 'doc.pdf', type: 'application/pdf' });
+      form.append('page', String(Math.max(0, page - 1)));
 
-  // المكتبة تتطلب مساراً محلياً بصيغة file://. نضمن ذلك.
-  const normalizedUri = React.useMemo(() => {
-    if (!uri) return uri;
-    if (uri.startsWith('file://') || uri.startsWith('content://')) return uri;
-    if (uri.startsWith('/')) return 'file://' + uri;
-    return uri;
-  }, [uri]);
+      const resp = await fetch(RENDER_ENDPOINT, { method: 'POST', body: form });
+      if (myReq !== reqIdRef.current) return;
 
-  const fallback = (
-    <View style={styles.fallback}>
-      <Ionicons name="document-text-outline" size={54} color="#475569" />
-      <Text style={styles.fallbackText}>{fallbackLabel || 'PDF'}</Text>
-    </View>
-  );
+      console.log('[PdfPreview] استجابة الخادم:', resp.status);
+      if (!resp.ok) {
+        console.log('[PdfPreview] فشل الخادم — الحالة:', resp.status);
+        setState('error');
+        return;
+      }
 
-  if (!nativeReady) {
-    return fallback;
-  }
+      // نحوّل الرد (PNG) إلى base64 لعرضه في <Image>
+      const blob = await resp.blob();
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (myReq !== reqIdRef.current) return;
+        const result = reader.result as string; // data:image/png;base64,...
+        console.log('[PdfPreview] صورة جاهزة، الطول:', result?.length);
+        setImageUri(result);
+        setState('done');
+      };
+      reader.onerror = () => { if (myReq === reqIdRef.current) setState('error'); };
+      reader.readAsDataURL(blob);
+    } catch (err: any) {
+      console.log('[PdfPreview] خطأ في الاتصال:', err?.message || String(err));
+      if (myReq === reqIdRef.current) setState('error');
+    }
+  }, [uri, page]);
 
-  return (
-    <PdfErrorBoundary fallback={fallback}>
-      <View style={styles.wrap} onLayout={(e) => setBox(e.nativeEvent.layout)}>
-        {box.width > 0 && box.height > 0 ? (
-          <PdfRendererView
-            source={normalizedUri}
-            style={{ width: box.width, height: box.height, backgroundColor: '#0b1220' }}
-            distanceBetweenPages={12}
-            maxZoom={4}
-            singlePage={false}
-            onPageChange={() => { /* تحميل ناجح */ }}
-          />
-        ) : null}
+  // حمّل تلقائياً عند تغيّر الصفحة
+  React.useEffect(() => {
+    loadViaFetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uri, page]);
+
+  // ===== العرض =====
+  if (state === 'loading') {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#60a5fa" />
+        <Text style={styles.hint}>{fallbackLabel || 'PDF'}</Text>
       </View>
-    </PdfErrorBoundary>
+    );
+  }
+
+  if (state === 'done' && imageUri) {
+    return (
+      <View style={styles.center}>
+        <Image
+          source={{ uri: imageUri }}
+          style={[styles.image, { transform: [{ rotate: `${rotationDeg}deg` }] }]}
+          resizeMode="contain"
+        />
+      </View>
+    );
+  }
+
+  // error / offline / idle => بديل آمن + زر إعادة المحاولة
+  return (
+    <View style={styles.center}>
+      <Ionicons name="cloud-offline-outline" size={48} color="#475569" />
+      <Text style={styles.fallbackText}>{fallbackLabel || 'PDF'}</Text>
+      <Text style={styles.offlineNote}>المعاينة تحتاج اتصالاً بالإنترنت</Text>
+      <TouchableOpacity style={styles.retryBtn} onPress={loadViaFetch}>
+        <Ionicons name="refresh" size={16} color="#fff" />
+        <Text style={styles.retryText}>إعادة المحاولة</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, width: '100%', height: '100%', backgroundColor: '#0b1220', alignItems: 'stretch', justifyContent: 'center' },
-  renderer: { flex: 1, backgroundColor: '#0b1220' },
-  fallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b1220', gap: 12 },
-  fallbackText: { color: '#64748b', fontSize: 14, fontWeight: '600' },
+  center: { flex: 1, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b1220', gap: 12 },
+  image: { width: '100%', height: '100%' },
+  hint: { color: '#64748b', fontSize: 13, fontWeight: '600' },
+  fallbackText: { color: '#94a3b8', fontSize: 15, fontWeight: '700' },
+  offlineNote: { color: '#64748b', fontSize: 12 },
+  retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1d4ed8', borderRadius: 10, paddingVertical: 9, paddingHorizontal: 18, marginTop: 4 },
+  retryText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 });

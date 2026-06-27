@@ -278,6 +278,7 @@ export default function RotatePdfScreen() {
           <View style={styles.previewBody}>
             <PdfPagePreview
               uri={file.uri}
+              page={previewPage}
               rotationDeg={rotations[previewPage] || 0}
               fallbackLabel={`${t('pages')} ${previewPage}`}
             />
