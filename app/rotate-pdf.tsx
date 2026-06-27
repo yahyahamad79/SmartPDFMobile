@@ -17,7 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
 import { saveToArchive } from '@/lib/archive';
-import PdfPagePreview, { isPdfPreviewAvailable } from '@/components/PdfPagePreview';
+import PdfPagePreview, { PdfThumb, isPdfPreviewAvailable } from '@/components/PdfPagePreview';
 
 /**
  * Rotate Pages — محسّنة بمعاينة محتوى حقيقي.
@@ -210,9 +210,7 @@ export default function RotatePdfScreen() {
                       activeOpacity={0.8}
                       onPress={() => setPreviewPage(page)}
                     >
-                      <View style={[styles.pageIconWrap, { transform: [{ rotate: `${angle}deg` }] }]}>
-                        <Ionicons name="document-outline" size={30} color={rotated ? '#60a5fa' : '#64748b'} />
-                      </View>
+                      <PdfThumb uri={file.uri} page={page} rotationDeg={angle} />
                       <View style={styles.pageNumBadge}>
                         <Text style={styles.pageNumText}>{page}</Text>
                       </View>
@@ -328,7 +326,7 @@ const styles = StyleSheet.create({
   pagesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
   pageCard: { width: '31%', backgroundColor: '#1e293b', borderRadius: 12, padding: 8, borderWidth: 0.5, borderColor: '#2d3a4f', alignItems: 'center' },
   pageCardActive: { borderColor: '#60a5fa', borderWidth: 1 },
-  pageThumb: { width: '100%', aspectRatio: 0.85, backgroundColor: '#0b1220', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8, position: 'relative' },
+  pageThumb: { width: '100%', aspectRatio: 0.85, backgroundColor: '#0b1220', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8, position: 'relative', overflow: 'hidden' },
   pageIconWrap: { alignItems: 'center', justifyContent: 'center' },
   pageNumBadge: { position: 'absolute', top: 4, left: 4, backgroundColor: '#0008', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
   pageNumText: { color: '#cbd5e1', fontSize: 10, fontWeight: '700' },
