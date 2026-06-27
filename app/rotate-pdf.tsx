@@ -17,7 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
 import { saveToArchive } from '@/lib/archive';
-import PdfPagePreview, { clearPreviewSession, isPdfPreviewAvailable } from '@/components/PdfPagePreview';
+import PdfPagePreview, { clearPreviewSession, getServerPageCount, isPdfPreviewAvailable } from '@/components/PdfPagePreview';
 
 /**
  * Rotate Pages — محسّنة بمعاينة محتوى حقيقي.
@@ -67,6 +67,14 @@ export default function RotatePdfScreen() {
       clearPreviewSession(); // أفرغ جلسة الملف السابق
       setFile({ uri: a.uri, name: a.name, size: a.size ?? undefined, pageCount: count });
       setRotations({});
+      // تصحيح عدد الصفحات من السيرفر في الخلفية (إن قرأ pdf-lib خطأً).
+      // لا يعطّل الفتح — يحدث بهدوء، ويُحدّث العدد إن اختلف.
+      getServerPageCount(a.uri).then((serverCount) => {
+        if (serverCount && serverCount !== count) {
+          console.log('[Rotate] تصحيح عدد الصفحات:', count, '->', serverCount);
+          setFile((prev) => (prev && prev.uri === a.uri ? { ...prev, pageCount: serverCount } : prev));
+        }
+      }).catch(() => {});
       setOutputName((a.name || 'rotated').replace(/\.pdf$/i, '') + '_rotated');
     } catch (e) {
       Alert.alert(t('error'), t('couldNotRead'));

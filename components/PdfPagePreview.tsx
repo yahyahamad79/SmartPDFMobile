@@ -31,9 +31,11 @@ export function clearPreviewSession(uri?: string) {
     for (const k of Array.from(imageCache.keys())) {
       if (k.startsWith(uri + '#')) imageCache.delete(k);
     }
+    totalByUri.delete(uri);
   } else {
     sessionByUri.clear();
     imageCache.clear();
+    totalByUri.clear();
   }
 }
 
@@ -55,36 +57,41 @@ async function ensureSession(uri: string): Promise<string> {
   return sid;
 }
 
-// يجلب صورة صفحة عبر الجلسة (يعيد الرفع تلقائياً إن انتهت الجلسة 410)
+
+// يعيد العدد الحقيقي للصفحات من السيرفر (بعد الرفع). يُستخدم لتصحيح
+// العدد إن قرأه pdf-lib خطأً. متاح فقط عند الاتصال.
+const totalByUri = new Map<string, number>();
+export async function getServerPageCount(uri: string): Promise<number | null> {
+  try {
+    if (totalByUri.has(uri)) return totalByUri.get(uri)!;
+    const form = new FormData();
+    // @ts-ignore
+    form.append('file', { uri, name: 'doc.pdf', type: 'application/pdf' });
+    const resp = await fetch(UPLOAD_ENDPOINT, { method: 'POST', body: form });
+    if (!resp.ok) return null;
+    const json = await resp.json();
+    const sid = json.sessionId as string;
+    const total = json.totalPages as number;
+    if (sid) sessionByUri.set(uri, sid);   // أعد استخدام نفس الجلسة
+    if (total) { totalByUri.set(uri, total); return total; }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// يجلب رابط صورة صفحة عبر الجلسة (يعيد الرفع تلقائياً إن انتهت 410).
+// نعيد رابطاً مباشراً يحمّله <Image> (أكثر موثوقية من blob+FileReader في RN).
 async function fetchPageImage(uri: string, page: number, zoom: number): Promise<string> {
   const cacheKey = `${uri}#${page}@${zoom}`;
   const cached = imageCache.get(cacheKey);
   if (cached) return cached;
 
-  const getOnce = async (sid: string) => {
-    const url = `${BASE}/render/${sid}/${page}?zoom=${zoom}`;
-    return await fetch(url);
-  };
-
-  let sid = await ensureSession(uri);
-  let resp = await getOnce(sid);
-  if (resp.status === 410) {
-    // الجلسة انتهت — أعد الرفع مرة واحدة وحاول ثانيةً
-    sessionByUri.delete(uri);
-    sid = await ensureSession(uri);
-    resp = await getOnce(sid);
-  }
-  if (!resp.ok) throw new Error(`render failed: ${resp.status}`);
-
-  const blob = await resp.blob();
-  const dataUri: string = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error('read failed'));
-    reader.readAsDataURL(blob);
-  });
-  imageCache.set(cacheKey, dataUri);
-  return dataUri;
+  // تأكّد من وجود جلسة (رفع مرة واحدة)، ثم أعد الرابط المباشر.
+  const sid = await ensureSession(uri);
+  const url = `${BASE}/render/${sid}/${page}?zoom=${zoom}`;
+  imageCache.set(cacheKey, url);
+  return url;
 }
 
 type Props = {
@@ -138,6 +145,13 @@ export default function PdfPagePreview({ uri, page, rotationDeg = 0, fallbackLab
           source={{ uri: imageUri }}
           style={[styles.image, { transform: [{ rotate: `${rotationDeg}deg` }] }]}
           resizeMode="contain"
+          onError={() => {
+            // قد تكون الجلسة انتهت (410) — أفرغها وأعد المحاولة مرة
+            console.log('[PdfPreview] فشل عرض الصورة — إعادة المحاولة');
+            sessionByUri.delete(uri);
+            imageCache.clear();
+            load();
+          }}
         />
       </View>
     );
