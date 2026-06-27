@@ -17,7 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
 import { saveToArchive } from '@/lib/archive';
-import PdfPagePreview, { PdfThumb, isPdfPreviewAvailable } from '@/components/PdfPagePreview';
+import PdfPagePreview, { PdfThumb, clearRenderQueue, isPdfPreviewAvailable } from '@/components/PdfPagePreview';
 
 /**
  * Rotate Pages — محسّنة بمعاينة محتوى حقيقي.
@@ -64,6 +64,7 @@ export default function RotatePdfScreen() {
       const b64 = await readAsBase64(a.uri);
       const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
       const count = doc.getPageCount();
+      clearRenderQueue(); // أفرغ أي طلبات قديمة قبل الملف الجديد
       setFile({ uri: a.uri, name: a.name, size: a.size ?? undefined, pageCount: count });
       setRotations({});
       setOutputName((a.name || 'rotated').replace(/\.pdf$/i, '') + '_rotated');
@@ -72,7 +73,7 @@ export default function RotatePdfScreen() {
     }
   };
 
-  const clearFile = () => { setFile(null); setRotations({}); };
+  const clearFile = () => { clearRenderQueue(); setFile(null); setRotations({}); };
 
   // تدوير صفحة واحدة +90 (نسبي)
   const rotatePage = (page: number) => {

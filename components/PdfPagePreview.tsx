@@ -27,6 +27,35 @@ const RENDER_ENDPOINT = 'https://smartpdf-trial-server.onrender.com/render-page'
 // تخزين مؤقت مشترك للصور المصغّرة (مفتاح: uri+صفحة) — يمنع إعادة الطلب.
 const thumbCache = new Map<string, string>();
 
+// ===== طابور التحميل العالمي =====
+// يضمن طلباً واحداً نشطاً في كل لحظة (لا طلبات متزامنة تُغرق السيرفر).
+// كل مصغّرة تنضمّ للطابور، وتُعالَج تباعاً.
+type QueueTask = () => Promise<void>;
+const renderQueue: QueueTask[] = [];
+let queueActive = false;
+
+async function processQueue() {
+  if (queueActive) return;
+  queueActive = true;
+  while (renderQueue.length > 0) {
+    const task = renderQueue.shift();
+    if (task) {
+      try { await task(); } catch { /* تجاهل، نكمل */ }
+    }
+  }
+  queueActive = false;
+}
+
+function enqueueRender(task: QueueTask) {
+  renderQueue.push(task);
+  processQueue();
+}
+
+// إفراغ الطابور (عند تغيير الملف مثلاً) لتجنّب طلبات قديمة
+export function clearRenderQueue() {
+  renderQueue.length = 0;
+}
+
 type Props = {
   uri: string;            // file:// للملف المحلي
   page: number;           // رقم الصفحة (1-based)
@@ -48,33 +77,48 @@ export function PdfThumb({ uri, page, rotationDeg = 0 }: { uri: string; page: nu
   const [failed, setFailed] = React.useState(false);
   const reqRef = React.useRef(0);
 
-  const load = React.useCallback(async () => {
+  // الطلب الفعلي (يُستدعى من داخل الطابور — طلب واحد في كل لحظة)
+  const doFetch = React.useCallback(async () => {
     if (thumbCache.has(cacheKey)) { setImg(thumbCache.get(cacheKey)!); return; }
-    const myReq = ++reqRef.current;
-    setFailed(false);
-    try {
-      const form = new FormData();
-      // @ts-ignore
-      form.append('file', { uri, name: 'doc.pdf', type: 'application/pdf' });
-      form.append('page', String(Math.max(0, page - 1)));
-      form.append('zoom', '1.0'); // دقّة منخفضة للمصغّرات (أسرع وأخف)
-      const resp = await fetch(RENDER_ENDPOINT, { method: 'POST', body: form });
-      if (myReq !== reqRef.current) return;
-      if (!resp.ok) { setFailed(true); return; }
-      const blob = await resp.blob();
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (myReq !== reqRef.current) return;
-        const result = reader.result as string;
-        thumbCache.set(cacheKey, result);
-        setImg(result);
-      };
-      reader.onerror = () => { if (myReq === reqRef.current) setFailed(true); };
-      reader.readAsDataURL(blob);
-    } catch {
-      if (myReq === reqRef.current) setFailed(true);
-    }
+    const myReq = reqRef.current;
+    return await new Promise<void>((resolve) => {
+      (async () => {
+        try {
+          const form = new FormData();
+          // @ts-ignore
+          form.append('file', { uri, name: 'doc.pdf', type: 'application/pdf' });
+          form.append('page', String(Math.max(0, page - 1)));
+          form.append('zoom', '1.0'); // دقّة منخفضة للمصغّرات (أسرع وأخف)
+          const resp = await fetch(RENDER_ENDPOINT, { method: 'POST', body: form });
+          if (myReq !== reqRef.current) { resolve(); return; }
+          if (!resp.ok) { setFailed(true); resolve(); return; }
+          const blob = await resp.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            if (myReq === reqRef.current) {
+              const result = reader.result as string;
+              thumbCache.set(cacheKey, result);
+              setImg(result);
+            }
+            resolve();
+          };
+          reader.onerror = () => { if (myReq === reqRef.current) setFailed(true); resolve(); };
+          reader.readAsDataURL(blob);
+        } catch {
+          if (myReq === reqRef.current) setFailed(true);
+          resolve();
+        }
+      })();
+    });
   }, [uri, page, cacheKey]);
+
+  // إضافة الطلب للطابور (يُعالَج تباعاً، طلب واحد في كل لحظة)
+  const load = React.useCallback(() => {
+    if (thumbCache.has(cacheKey)) { setImg(thumbCache.get(cacheKey)!); return; }
+    reqRef.current++;
+    setFailed(false);
+    enqueueRender(() => doFetch());
+  }, [cacheKey, doFetch]);
 
   React.useEffect(() => {
     if (!img) load();
