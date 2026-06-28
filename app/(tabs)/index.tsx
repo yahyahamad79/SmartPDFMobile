@@ -20,6 +20,8 @@ import {
   FileType,
   FileType2,
   Lock,
+  Stamp,
+  Archive,
   ChevronLeft,
   ChevronRight,
   WifiOff,
@@ -65,7 +67,9 @@ const CONVERT_FROM: Tool[] = [
 ];
 
 const SECURITY: Tool[] = [
-  { id: 'protect', route: '/protect-pdf', titleKey: 'toolProtect', descKey: 'toolProtectDesc', Icon: Lock, iconBg: '#9333EA' },
+  { id: 'protect',   route: '/protect-pdf',   titleKey: 'toolProtect',   descKey: 'toolProtectDesc',   Icon: Lock,    iconBg: '#9333EA' },
+  { id: 'watermark', route: '/watermark-pdf', titleKey: 'toolWatermark', descKey: 'toolWatermarkDesc', Icon: Stamp,   iconBg: '#7C3AED' },
+  { id: 'compress',  route: '/compress-pdf',  titleKey: 'toolCompress',  descKey: 'toolCompressDesc',  Icon: Archive, iconBg: '#0EA5E9' },
 ];
 
 export default function ToolsScreen() {
