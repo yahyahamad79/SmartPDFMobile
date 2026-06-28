@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
+  Image,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -11,6 +12,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
 import { useTrial } from '@/lib/trial';
+
+// الشعار من مجلد خاص لسهولة التعديل: assets/branding/logo.png
+const LOGO = require('@/assets/branding/logo.png');
 
 type Tool = {
   id: string;
@@ -102,21 +106,27 @@ export default function ToolsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View style={[styles.headerRow, { flexDirection: rowDir }]}>
-            <View style={styles.offlinePill}>
-              <Ionicons name="cloud-offline-outline" size={13} color="#34d399" />
-              <Text style={styles.offlineText}>{t('offline')}</Text>
-            </View>
+        {/* رأس مدمج: الشعار+الاسم على جهة، والترحيب+الشارتان على الأخرى */}
+        <View style={[styles.header, { flexDirection: rowDir }]}>
+          <View style={[styles.brandRow, { flexDirection: rowDir }]}>
+            <Image source={LOGO} style={styles.logo} resizeMode="contain" />
             <Text style={styles.appName}>{t('appName')}</Text>
           </View>
-          <Text style={[styles.welcome, { textAlign: txtAlign }]}>{t('welcome')} 👋</Text>
-          <Text style={[styles.tagline, { textAlign: txtAlign }]}>{t('homeTagline')}</Text>
-          {isTrialActive && daysLeft > 0 ? (
-            <Text style={[styles.trialHint, { textAlign: txtAlign }]}>
-              {t('daysLeftLabel')} {daysLeft} {t('daysWord')}
-            </Text>
-          ) : null}
+          <View style={{ alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
+            <Text style={styles.welcome}>{t('welcome')} 👋</Text>
+            <View style={[styles.badgesRow, { flexDirection: rowDir }]}>
+              <View style={styles.offlinePill}>
+                <Ionicons name="cloud-offline-outline" size={12} color="#34d399" />
+                <Text style={styles.offlineText}>{t('offline')}</Text>
+              </View>
+              {isTrialActive && daysLeft > 0 ? (
+                <View style={styles.daysPill}>
+                  <Ionicons name="time-outline" size={12} color="#60a5fa" />
+                  <Text style={styles.daysText}>{daysLeft} {t('daysWord')}</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
         </View>
 
         {sectionHeader('catOrganize', 'grid-outline', '#a78bfa')}
@@ -127,7 +137,7 @@ export default function ToolsScreen() {
         <View style={styles.listBox}>
           {CONVERT_TO.map((tool, i) => listRow(tool, i === CONVERT_TO.length - 1))}
         </View>
-        <Text style={[styles.subLabel, { textAlign: txtAlign, marginTop: 12 }]}>{t('convertFrom')}</Text>
+        <Text style={[styles.subLabel, { textAlign: txtAlign, marginTop: 10 }]}>{t('convertFrom')}</Text>
         <View style={styles.listBox}>
           {CONVERT_FROM.map((tool, i) => listRow(tool, i === CONVERT_FROM.length - 1))}
         </View>
@@ -137,7 +147,7 @@ export default function ToolsScreen() {
           {SECURITY.map((tool, i) => listRow(tool, i === SECURITY.length - 1))}
         </View>
 
-        <View style={{ height: 20 }} />
+        <View style={{ height: 16 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -146,22 +156,34 @@ export default function ToolsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0f172a' },
   scroll: { padding: 16, paddingTop: 8 },
-  header: { paddingVertical: 14, paddingHorizontal: 2 },
-  headerRow: { alignItems: 'center', justifyContent: 'space-between' },
-  appName: { fontSize: 18, fontWeight: '500', color: '#cbd5e1' },
-  offlinePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#14463a', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  offlineText: { color: '#34d399', fontSize: 11, fontWeight: '500' },
-  welcome: { color: '#ffffff', fontSize: 22, fontWeight: '500', marginTop: 16 },
-  tagline: { color: '#94a3b8', fontSize: 13, marginTop: 4 },
-  trialHint: { color: '#60a5fa', fontSize: 12, marginTop: 8, fontWeight: '500' },
-  secHead: { alignItems: 'center', gap: 7, justifyContent: 'flex-end', marginTop: 22, marginBottom: 12, paddingHorizontal: 4 },
+
+  header: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 2,
+    marginBottom: 4,
+  },
+  brandRow: { alignItems: 'center', gap: 8 },
+  logo: { width: 30, height: 30, borderRadius: 7 },
+  appName: { fontSize: 18, fontWeight: '600', color: '#cbd5e1' },
+  welcome: { color: '#ffffff', fontSize: 18, fontWeight: '600' },
+  badgesRow: { alignItems: 'center', gap: 6, marginTop: 6 },
+  offlinePill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#14463a', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 20 },
+  offlineText: { color: '#34d399', fontSize: 10, fontWeight: '500' },
+  daysPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#16304d', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 20 },
+  daysText: { color: '#60a5fa', fontSize: 10, fontWeight: '500' },
+
+  secHead: { alignItems: 'center', gap: 7, justifyContent: 'flex-end', marginTop: 16, marginBottom: 10, paddingHorizontal: 4 },
   secTitle: { color: '#e2e8f0', fontSize: 14, fontWeight: '500' },
   subLabel: { color: '#64748b', fontSize: 11, fontWeight: '500', marginBottom: 8, paddingHorizontal: 4 },
+
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   gCard: { width: '48.5%', backgroundColor: '#1e293b', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 0.5, borderColor: '#2d3a4f' },
   gIconBox: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   gTitle: { color: '#fff', fontSize: 14, fontWeight: '500' },
   gDesc: { color: '#8896a8', fontSize: 11, marginTop: 2 },
+
   listBox: { backgroundColor: '#1e293b', borderRadius: 14, borderWidth: 0.5, borderColor: '#2d3a4f', overflow: 'hidden' },
   lRow: { alignItems: 'center', justifyContent: 'space-between', padding: 12 },
   lRowBorder: { borderBottomWidth: 0.5, borderBottomColor: '#2d3a4f' },
