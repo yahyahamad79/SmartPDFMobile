@@ -1,13 +1,11 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import * as Sharing from 'expo-sharing';
 import { PDFDocument, rgb, degrees, StandardFonts } from '@cantoo/pdf-lib';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -18,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
+import { saveToArchive } from '@/lib/archive';
 
 /**
  * Watermark PDF — adds a diagonal semi-transparent TEXT watermark on
@@ -47,17 +46,6 @@ export default function WatermarkPdfScreen() {
   const readAsBase64 = async (uri: string) =>
     await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
 
-  const bytesToBase64 = (bytes: Uint8Array): string => {
-    let binary = '';
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk) as unknown as number[]);
-    }
-    if (typeof btoa === 'function') return btoa(binary);
-    // @ts-ignore
-    return Buffer.from(binary, 'binary').toString('base64');
-  };
-
   const pickFile = async () => {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
@@ -76,24 +64,6 @@ export default function WatermarkPdfScreen() {
     n = n.replace(/[\\/:*?"<>|]/g, '_');
     if (!n.toLowerCase().endsWith('.pdf')) n += '.pdf';
     return n;
-  };
-
-  const saveOutput = async (base64: string, fileName: string) => {
-    if (Platform.OS === 'android') {
-      const perm = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-      if (!perm.granted) { Alert.alert(t('cancelled'), t('noFolderSaved')); return false; }
-      const destUri = await FileSystem.StorageAccessFramework.createFileAsync(perm.directoryUri, fileName, 'application/pdf');
-      await FileSystem.writeAsStringAsync(destUri, base64, { encoding: 'base64' });
-      Alert.alert(t('done'), fileName);
-      return true;
-    } else {
-      const outUri = FileSystem.cacheDirectory + fileName;
-      await FileSystem.writeAsStringAsync(outUri, base64, { encoding: 'base64' });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(outUri, { mimeType: 'application/pdf', dialogTitle: 'Save watermarked PDF' });
-      } else { Alert.alert(t('done'), t('savedToArchive')); }
-      return true;
-    }
   };
 
   const applyWatermark = async () => {
@@ -132,9 +102,12 @@ export default function WatermarkPdfScreen() {
         });
       }
 
-      const bytes = await doc.save({ useObjectStreams: false });
-      const outB64 = bytesToBase64(bytes);
-      await saveOutput(outB64, finalFileName());
+      const outB64 = await doc.saveAsBase64();
+      const fileName = finalFileName();
+      const saved = await saveToArchive(outB64, fileName, 'watermark');
+      if (saved) {
+        router.push({ pathname: '/result', params: { name: saved.name, uri: saved.uri, size: String(saved.size), kind: saved.kind } });
+      }
     } catch (e: any) {
       Alert.alert(t('wmFailed'), e?.message ? String(e.message) : 'Unknown error');
     } finally {

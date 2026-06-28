@@ -1,13 +1,11 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import * as Sharing from 'expo-sharing';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -18,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
+import { saveToArchive } from '@/lib/archive';
 
 /**
  * Compress PDF — server-side compression via PyMuPDF.
@@ -72,24 +71,6 @@ export default function CompressPdfScreen() {
     return n;
   };
 
-  const saveOutput = async (base64: string, fileName: string) => {
-    if (Platform.OS === 'android') {
-      const perm = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-      if (!perm.granted) { Alert.alert(t('cancelled'), t('noFolderSaved')); return false; }
-      const destUri = await FileSystem.StorageAccessFramework.createFileAsync(perm.directoryUri, fileName, 'application/pdf');
-      await FileSystem.writeAsStringAsync(destUri, base64, { encoding: 'base64' });
-      Alert.alert(t('done'), fileName);
-      return true;
-    } else {
-      const outUri = FileSystem.cacheDirectory + fileName;
-      await FileSystem.writeAsStringAsync(outUri, base64, { encoding: 'base64' });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(outUri, { mimeType: 'application/pdf', dialogTitle: 'Save compressed PDF' });
-      } else { Alert.alert(t('done'), t('savedToArchive')); }
-      return true;
-    }
-  };
-
   const compress = async () => {
     if (!file) { Alert.alert(t('noFile'), t('noFilePick')); return; }
     setBusy(true);
@@ -123,7 +104,11 @@ export default function CompressPdfScreen() {
       });
 
       if (origKB && newKB) setResultInfo({ origKB, newKB });
-      await saveOutput(base64, finalFileName());
+      const fileName = finalFileName();
+      const saved = await saveToArchive(base64, fileName, 'compress');
+      if (saved) {
+        router.push({ pathname: '/result', params: { name: saved.name, uri: saved.uri, size: String(saved.size), kind: saved.kind } });
+      }
     } catch (e: any) {
       Alert.alert(t('compressFailed'), e?.message ? String(e.message) : t('serverError'));
     } finally {
