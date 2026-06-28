@@ -8,6 +8,7 @@ const STORE_KEY = 'app_lang_v1';
 
 const STRINGS: Record<string, { ar: string; en: string }> = {
   // عام
+  
   appName: { ar: 'Smart PDF', en: 'Smart PDF' },
   welcome: { ar: 'أهلاً بك', en: 'Welcome' },
   offline: { ar: 'أوفلاين', en: 'Offline' },
@@ -27,6 +28,16 @@ const STRINGS: Record<string, { ar: string; en: string }> = {
   tabTools: { ar: 'الأدوات', en: 'Tools' },
   tabFiles: { ar: 'الملفات', en: 'Files' },
   tabSettings: { ar: 'الإعدادات', en: 'Settings' },
+
+  // أدوات جديدة في الشاشة الرئيسية
+  toolXls2Pdf: { ar: 'Excel إلى PDF', en: 'Excel to PDF' },
+  toolXls2PdfDesc: { ar: 'تحويل جداول البيانات', en: 'Convert spreadsheets' },
+  toolPpt2Pdf: { ar: 'PowerPoint إلى PDF', en: 'PowerPoint to PDF' },
+  toolPpt2PdfDesc: { ar: 'تحويل العروض التقديمية', en: 'Convert presentations' },
+  toolPdf2Doc: { ar: 'PDF إلى Word', en: 'PDF to Word' },
+  toolPdf2DocDesc: { ar: 'مستند قابل للتحرير', en: 'Editable document' },
+  toolPdf2Ppt: { ar: 'PowerPoint من PDF', en: 'PDF to PowerPoint' },
+  toolPdf2PptDesc: { ar: 'تحويل لعرض تقديمي', en: 'Convert to presentation' },
 
   // شاشة الأدوات
   homeTagline: { ar: 'صندوق أدواتك الكامل للـ PDF — اختر ما تحتاجه', en: 'Your complete PDF toolkit — pick what you need' },

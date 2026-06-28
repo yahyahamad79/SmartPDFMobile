@@ -1,7 +1,6 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
-  Image,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -9,41 +8,64 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  Combine,
+  RotateCw,
+  Trash2,
+  Scissors,
+  FileSpreadsheet,
+  Presentation,
+  Files,
+  Image as ImageIcon,
+  FileType,
+  FileType2,
+  Lock,
+  ChevronLeft,
+  ChevronRight,
+  WifiOff,
+  Clock,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { useLang } from '@/lib/i18n';
 import { useTrial } from '@/lib/trial';
 
-// الشعار من مجلد خاص لسهولة التعديل: assets/branding/logo.png
-const LOGO = require('@/assets/branding/logo.png');
+/**
+ * شاشة الأدوات (الرئيسية) — تصميم بنفسجي فاتح عصري + أيقونات Lucide.
+ * - نظام قوائم (بطاقات أفقية) لكل الأقسام.
+ * - الرأس: الشعار + شارتا أوفلاين والمدة في الأعلى.
+ * - يحافظ على روابط النظام (routes) و i18n و trial كما هي.
+ */
 
 type Tool = {
   id: string;
   route: string | null;
   titleKey: string;
   descKey: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  tint: string;
-  tintBg: string;
+  Icon: LucideIcon;
+  iconBg: string;   // لون خلفية مربّع الأيقونة
 };
 
 const ORGANIZE: Tool[] = [
-  { id: 'merge',  route: '/merge-pdf',    titleKey: 'toolMerge',  descKey: 'toolMergeDesc',  icon: 'git-merge-outline', tint: '#a78bfa', tintBg: '#312e5f' },
-  { id: 'split',  route: '/split-pdf',    titleKey: 'toolSplit',  descKey: 'toolSplitDesc',  icon: 'cut-outline',       tint: '#a78bfa', tintBg: '#312e5f' },
-  { id: 'rotate', route: '/rotate-pdf',   titleKey: 'toolRotate', descKey: 'toolRotateDesc', icon: 'refresh-outline',   tint: '#a78bfa', tintBg: '#312e5f' },
-  { id: 'delete', route: '/delete-pages', titleKey: 'toolDelete', descKey: 'toolDeleteDesc', icon: 'trash-outline',     tint: '#a78bfa', tintBg: '#312e5f' },
+  { id: 'merge',  route: '/merge-pdf',    titleKey: 'toolMerge',  descKey: 'toolMergeDesc',  Icon: Combine,  iconBg: '#7C3AED' },
+  { id: 'rotate', route: '/rotate-pdf',   titleKey: 'toolRotate', descKey: 'toolRotateDesc', Icon: RotateCw, iconBg: '#6366F1' },
+  { id: 'delete', route: '/delete-pages', titleKey: 'toolDelete', descKey: 'toolDeleteDesc', Icon: Trash2,   iconBg: '#EC4899' },
+  { id: 'split',  route: '/split-pdf',    titleKey: 'toolSplit',  descKey: 'toolSplitDesc',  Icon: Scissors, iconBg: '#8B5CF6' },
 ];
 
 const CONVERT_TO: Tool[] = [
-  { id: 'img2pdf', route: '/images-to-pdf', titleKey: 'toolImg2Pdf', descKey: 'toolImg2PdfDesc', icon: 'image-outline',    tint: '#34d399', tintBg: '#14463a' },
-  { id: 'doc2pdf', route: null,             titleKey: 'toolDoc2Pdf', descKey: 'toolDoc2PdfDesc', icon: 'document-outline', tint: '#34d399', tintBg: '#14463a' },
+  { id: 'xls2pdf', route: null, titleKey: 'toolXls2Pdf', descKey: 'toolXls2PdfDesc', Icon: FileSpreadsheet, iconBg: '#10B981' },
+  { id: 'ppt2pdf', route: null, titleKey: 'toolPpt2Pdf', descKey: 'toolPpt2PdfDesc', Icon: Presentation,    iconBg: '#F97316' },
+  { id: 'doc2pdf', route: null, titleKey: 'toolDoc2Pdf', descKey: 'toolDoc2PdfDesc', Icon: Files,           iconBg: '#6366F1' },
 ];
 
 const CONVERT_FROM: Tool[] = [
-  { id: 'pdf2img', route: null, titleKey: 'toolPdf2Img', descKey: 'toolPdf2ImgDesc', icon: 'images-outline', tint: '#34d399', tintBg: '#14463a' },
+  { id: 'pdf2img', route: '/images-to-pdf', titleKey: 'toolPdf2Img', descKey: 'toolPdf2ImgDesc', Icon: ImageIcon, iconBg: '#0EA5E9' },
+  { id: 'pdf2doc', route: null,             titleKey: 'toolPdf2Doc', descKey: 'toolPdf2DocDesc', Icon: FileType,  iconBg: '#2563EB' },
+  { id: 'pdf2ppt', route: null,             titleKey: 'toolPdf2Ppt', descKey: 'toolPdf2PptDesc', Icon: FileType2, iconBg: '#DC2626' },
 ];
 
 const SECURITY: Tool[] = [
-  { id: 'protect', route: '/protect-pdf', titleKey: 'toolProtect', descKey: 'toolProtectDesc', icon: 'lock-closed-outline', tint: '#fbbf24', tintBg: '#4a3a0c' },
+  { id: 'protect', route: '/protect-pdf', titleKey: 'toolProtect', descKey: 'toolProtectDesc', Icon: Lock, iconBg: '#9333EA' },
 ];
 
 export default function ToolsScreen() {
@@ -51,146 +73,117 @@ export default function ToolsScreen() {
   const { t, isRTL } = useLang();
   const { daysLeft, isTrialActive } = useTrial();
 
+  const rowDir = isRTL ? 'row-reverse' : 'row';
+  const txtAlign: 'right' | 'left' = isRTL ? 'right' : 'left';
+  const Chevron = isRTL ? ChevronLeft : ChevronRight;
+
   const go = (tool: Tool) => {
     if (tool.route) router.push(tool.route as any);
   };
 
-  const rowDir = isRTL ? 'row-reverse' : 'row';
-  const txtAlign = isRTL ? 'right' : 'left';
-
-  const gridCard = (tool: Tool) => (
-    <TouchableOpacity key={tool.id} style={styles.gCard} activeOpacity={0.75} onPress={() => go(tool)}>
-      <View style={[styles.gIconBox, { backgroundColor: tool.tintBg }]}>
-        <Ionicons name={tool.icon} size={20} color={tool.tint} />
-      </View>
-      <Text style={[styles.gTitle, { textAlign: txtAlign }]}>{t(tool.titleKey)}</Text>
-      <Text style={[styles.gDesc, { textAlign: txtAlign }]}>{t(tool.descKey)}</Text>
-    </TouchableOpacity>
-  );
-
   const listRow = (tool: Tool, last: boolean) => {
     const soon = !tool.route;
+    const { Icon } = tool;
     return (
       <TouchableOpacity
         key={tool.id}
         activeOpacity={soon ? 1 : 0.7}
         disabled={soon}
         onPress={() => go(tool)}
-        style={[styles.lRow, { flexDirection: rowDir }, !last && styles.lRowBorder, soon && { opacity: 0.45 }]}
+        style={[styles.card, { flexDirection: rowDir }, soon && { opacity: 0.6 }]}
       >
+        <View style={[styles.iconBox, { backgroundColor: tool.iconBg }]}>
+          <Icon color="#ffffff" size={21} strokeWidth={2} />
+        </View>
+        <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
+          <Text style={[styles.cardTitle, { textAlign: txtAlign }]}>{t(tool.titleKey)}</Text>
+          <Text style={[styles.cardDesc, { textAlign: txtAlign }]}>{t(tool.descKey)}</Text>
+        </View>
         {soon ? (
           <View style={styles.soonBadge}><Text style={styles.soonText}>{t('comingSoon')}</Text></View>
         ) : (
-          <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={18} color="#475569" />
+          <Chevron color="#C2B8D8" size={18} strokeWidth={2} />
         )}
-        <View style={[styles.lRight, { flexDirection: rowDir }]}>
-          <View style={{ alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
-            <Text style={styles.lTitle}>{t(tool.titleKey)}</Text>
-            <Text style={styles.lDesc}>{t(tool.descKey)}</Text>
-          </View>
-          <View style={[styles.lIconBox, { backgroundColor: tool.tintBg }]}>
-            <Ionicons name={tool.icon} size={19} color={tool.tint} />
-          </View>
-        </View>
       </TouchableOpacity>
     );
   };
 
-  const sectionHeader = (titleKey: string, icon: keyof typeof Ionicons.glyphMap, color: string) => (
+  const sectionHeader = (titleKey: string) => (
     <View style={[styles.secHead, { flexDirection: rowDir }]}>
       <Text style={styles.secTitle}>{t(titleKey)}</Text>
-      <Ionicons name={icon} size={17} color={color} />
+      <View style={styles.secLine} />
     </View>
   );
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* رأس مدمج: الشعار+الاسم على جهة، والترحيب+الشارتان على الأخرى */}
-        <View style={[styles.header, { flexDirection: rowDir }]}>
-          <View style={[styles.brandRow, { flexDirection: rowDir }]}>
-            <Image source={LOGO} style={styles.logo} resizeMode="contain" />
+      <View style={styles.topBar}>
+        <View style={[styles.topRow, { flexDirection: rowDir }]}>
+          <View style={[styles.brand, { flexDirection: rowDir }]}>
+            <View style={styles.logo}><Text style={styles.logoText}>SP</Text></View>
             <Text style={styles.appName}>{t('appName')}</Text>
           </View>
-          <View style={{ alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
-            <Text style={styles.welcome}>{t('welcome')} 👋</Text>
-            <View style={[styles.badgesRow, { flexDirection: rowDir }]}>
-              <View style={styles.offlinePill}>
-                <Ionicons name="cloud-offline-outline" size={12} color="#34d399" />
-                <Text style={styles.offlineText}>{t('offline')}</Text>
-              </View>
-              {isTrialActive && daysLeft > 0 ? (
-                <View style={styles.daysPill}>
-                  <Ionicons name="time-outline" size={12} color="#60a5fa" />
-                  <Text style={styles.daysText}>{daysLeft} {t('daysWord')}</Text>
-                </View>
-              ) : null}
+          <View style={[styles.badges, { flexDirection: rowDir }]}>
+            <View style={styles.offlinePill}>
+              <WifiOff color="#5B2C9E" size={12} strokeWidth={2.2} />
+              <Text style={styles.offlineText}>{t('offline')}</Text>
             </View>
+            {isTrialActive && daysLeft > 0 ? (
+              <View style={styles.daysPill}>
+                <Clock color="#A62D5E" size={12} strokeWidth={2.2} />
+                <Text style={styles.daysText}>{daysLeft} {t('daysWord')}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
+      </View>
 
-        {sectionHeader('catOrganize', 'grid-outline', '#a78bfa')}
-        <View style={styles.grid}>{ORGANIZE.map(gridCard)}</View>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {sectionHeader('catConvert', 'swap-horizontal-outline', '#34d399')}
-        <Text style={[styles.subLabel, { textAlign: txtAlign }]}>{t('convertTo')}</Text>
-        <View style={styles.listBox}>
-          {CONVERT_TO.map((tool, i) => listRow(tool, i === CONVERT_TO.length - 1))}
-        </View>
-        <Text style={[styles.subLabel, { textAlign: txtAlign, marginTop: 10 }]}>{t('convertFrom')}</Text>
-        <View style={styles.listBox}>
-          {CONVERT_FROM.map((tool, i) => listRow(tool, i === CONVERT_FROM.length - 1))}
-        </View>
+        {sectionHeader('catOrganize')}
+        {ORGANIZE.map((tool, i) => listRow(tool, i === ORGANIZE.length - 1))}
 
-        {sectionHeader('catSecurity', 'shield-checkmark-outline', '#fbbf24')}
-        <View style={styles.listBox}>
-          {SECURITY.map((tool, i) => listRow(tool, i === SECURITY.length - 1))}
-        </View>
+        {sectionHeader('convertTo')}
+        {CONVERT_TO.map((tool, i) => listRow(tool, i === CONVERT_TO.length - 1))}
 
-        <View style={{ height: 16 }} />
+        {sectionHeader('convertFrom')}
+        {CONVERT_FROM.map((tool, i) => listRow(tool, i === CONVERT_FROM.length - 1))}
+
+        {sectionHeader('catSecurity')}
+        {SECURITY.map((tool, i) => listRow(tool, i === SECURITY.length - 1))}
+
+        <View style={{ height: 24 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0f172a' },
-  scroll: { padding: 16, paddingTop: 8 },
+  safe: { flex: 1, backgroundColor: '#F4F2FA' },
 
-  header: {
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 2,
-    marginBottom: 4,
-  },
-  brandRow: { alignItems: 'center', gap: 8 },
-  logo: { width: 30, height: 30, borderRadius: 7 },
-  appName: { fontSize: 18, fontWeight: '600', color: '#cbd5e1' },
-  welcome: { color: '#ffffff', fontSize: 18, fontWeight: '600' },
-  badgesRow: { alignItems: 'center', gap: 6, marginTop: 6 },
-  offlinePill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#14463a', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 20 },
-  offlineText: { color: '#34d399', fontSize: 10, fontWeight: '500' },
-  daysPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#16304d', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 20 },
-  daysText: { color: '#60a5fa', fontSize: 10, fontWeight: '500' },
+  topBar: { backgroundColor: '#FFFFFF', borderBottomWidth: 0.5, borderBottomColor: '#ECE7F5', paddingHorizontal: 18, paddingTop: 8, paddingBottom: 12 },
+  topRow: { alignItems: 'center', justifyContent: 'space-between' },
+  brand: { alignItems: 'center', gap: 10 },
+  logo: { width: 38, height: 38, borderRadius: 11, backgroundColor: '#7C3AED', alignItems: 'center', justifyContent: 'center' },
+  logoText: { color: '#fff', fontWeight: '500', fontSize: 13 },
+  appName: { fontSize: 18, fontWeight: '500', color: '#2E2148' },
+  badges: { alignItems: 'center', gap: 6 },
+  offlinePill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#E8DEF9', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
+  offlineText: { color: '#5B2C9E', fontSize: 11, fontWeight: '500' },
+  daysPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FCE3EE', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
+  daysText: { color: '#A62D5E', fontSize: 11, fontWeight: '500' },
 
-  secHead: { alignItems: 'center', gap: 7, justifyContent: 'flex-end', marginTop: 16, marginBottom: 10, paddingHorizontal: 4 },
-  secTitle: { color: '#e2e8f0', fontSize: 14, fontWeight: '500' },
-  subLabel: { color: '#64748b', fontSize: 11, fontWeight: '500', marginBottom: 8, paddingHorizontal: 4 },
+  scroll: { padding: 14, paddingTop: 4 },
 
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  gCard: { width: '48.5%', backgroundColor: '#1e293b', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 0.5, borderColor: '#2d3a4f' },
-  gIconBox: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  gTitle: { color: '#fff', fontSize: 14, fontWeight: '500' },
-  gDesc: { color: '#8896a8', fontSize: 11, marginTop: 2 },
+  secHead: { alignItems: 'center', gap: 8, marginTop: 18, marginBottom: 10, paddingHorizontal: 4 },
+  secTitle: { color: '#6B6088', fontSize: 13, fontWeight: '500' },
+  secLine: { flex: 1, height: 0.5, backgroundColor: '#E5DEF2' },
 
-  listBox: { backgroundColor: '#1e293b', borderRadius: 14, borderWidth: 0.5, borderColor: '#2d3a4f', overflow: 'hidden' },
-  lRow: { alignItems: 'center', justifyContent: 'space-between', padding: 12 },
-  lRowBorder: { borderBottomWidth: 0.5, borderBottomColor: '#2d3a4f' },
-  lRight: { alignItems: 'center', gap: 11 },
-  lIconBox: { width: 36, height: 36, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  lTitle: { color: '#fff', fontSize: 14, fontWeight: '500' },
-  lDesc: { color: '#8896a8', fontSize: 11, marginTop: 1 },
-  soonBadge: { borderWidth: 0.5, borderColor: '#334155', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
-  soonText: { color: '#475569', fontSize: 10 },
+  card: { alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF', borderWidth: 0.5, borderColor: '#ECE7F5', borderRadius: 14, padding: 11, paddingHorizontal: 13, marginBottom: 7 },
+  iconBox: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  cardTitle: { color: '#2E2148', fontSize: 14, fontWeight: '500' },
+  cardDesc: { color: '#9388AE', fontSize: 11, marginTop: 1 },
+
+  soonBadge: { backgroundColor: '#FCE3EE', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+  soonText: { color: '#A62D5E', fontSize: 10, fontWeight: '500' },
 });
