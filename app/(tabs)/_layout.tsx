@@ -1,8 +1,7 @@
+import { useLang } from '@/lib/i18n';
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Ionicons } from '@expo/vector-icons';
-import { useLang } from '@/lib/i18n';
-
 /**
  * التبويبات السفلية الثلاث: الأدوات / الملفات / الإعدادات.
  * بألوان الهوية الداكنة، والعناوين تتبع اللغة المختارة.

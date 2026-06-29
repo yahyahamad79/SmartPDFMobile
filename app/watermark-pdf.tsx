@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────
 // app/watermark-pdf.tsx
 // العلامة المائية (offline) — مع دعم العربية ومعالجة الملفات الكبيرة:
-//  • base64 سريع عبر base64-js (بدل الحلقات اليدوية البطيئة على Hermes)
+//  • base64 سريع عبر base64-js
 //  • شريط تقدّم + yield للواجهة كل دفعة صفحات (يمنع التجمّد)
-//  • دعم العربية الكامل (تشكيل الحروف عبر arabic-reshaper + خط Amiri مضمّن)
+//  • دعم العربية الكامل (تشكيل الحروف + خط Amiri مضمّن)
+//  • يستخدم useLang() و saveToArchive(base64, name, kind) مثل بقية الشاشات
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
@@ -13,13 +14,13 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { PDFDocument, degrees, rgb } from '@cantoo/pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { toByteArray, fromByteArray } from 'base64-js';
 import { Stamp, FileText, ChevronLeft, Check } from 'lucide-react-native';
 
-import { t } from '@/lib/i18n';
+import { useLang } from '@/lib/i18n';
 import { saveToArchive } from '@/lib/archive';
 import { AMIRI_FONT_BASE64 } from '@/lib/amiriFont';
 import { shapeForPdf, hasArabic } from '@/lib/arabicText';
@@ -29,17 +30,18 @@ const OPACITY_VALUES: Record<Opacity, number> = {
   light: 0.12, medium: 0.22, strong: 0.35,
 };
 
-// يترك الواجهة تتنفّس (يمنع التجمّد على JS thread)
 const yieldToUI = () => new Promise((r) => setTimeout(r, 0));
 
 export default function WatermarkScreen() {
   const router = useRouter();
+  const { t, isRTL } = useLang();
+
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileUri, setFileUri] = useState<string | null>(null);
   const [wmText, setWmText] = useState('');
   const [opacity, setOpacity] = useState<Opacity>('medium');
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState(0); // 0..100
+  const [progress, setProgress] = useState(0);
 
   async function pickFile() {
     const res = await DocumentPicker.getDocumentAsync({
@@ -51,28 +53,23 @@ export default function WatermarkScreen() {
   }
 
   async function run() {
-    if (!fileUri) { Alert.alert(t('wmNoFileT'), t('wmNoFile')); return; }
+    if (!fileUri) { Alert.alert(t('noFile'), t('noFilePick')); return; }
     if (!wmText.trim()) { Alert.alert(t('wmNoTextT'), t('wmNoText')); return; }
 
     setBusy(true);
     setProgress(0);
     try {
-      // 1) اقرأ الملف (base64) ثم حوّله لبايتات بسرعة
-      const b64 = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      const b64 = await FileSystem.readAsStringAsync(fileUri, { encoding: 'base64' });
       await yieldToUI();
       const srcBytes = toByteArray(b64);
       await yieldToUI();
 
-      // 2) جهّز المستند والخط
-      const doc = await PDFDocument.load(srcBytes);
+      const doc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
       doc.registerFontkit(fontkit);
       const font = await doc.embedFont(toByteArray(AMIRI_FONT_BASE64), { subset: false });
       const drawText = shapeForPdf(wmText.trim());
       const op = OPACITY_VALUES[opacity];
 
-      // 3) ارسم على كل صفحة، على دفعات مع تحديث التقدّم
       const pages = doc.getPages();
       const total = pages.length;
       const BATCH = 15;
@@ -88,29 +85,39 @@ export default function WatermarkScreen() {
           opacity: op, rotate: degrees(45),
         });
         if ((i + 1) % BATCH === 0 || i === total - 1) {
-          setProgress(Math.round(((i + 1) / total) * 90)); // حتى 90%
+          setProgress(Math.round(((i + 1) / total) * 90));
           await yieldToUI();
         }
       }
 
-      // 4) احفظ (useObjectStreams:false للتوافق)
       const outBytes = await doc.save({ useObjectStreams: false });
       await yieldToUI();
       setProgress(95);
       const outB64 = fromByteArray(outBytes);
       await yieldToUI();
 
-      // 5) خزّن في الأرشيف
-      const baseName = (fileName || 'document.pdf').replace(/\.pdf$/i, '');
-      const savedPath = await saveToArchive(`${baseName}_watermarked.pdf`, outB64);
+      // اسم الملف الناتج
+      let baseName = (fileName || 'document.pdf').replace(/\.pdf$/i, '');
+      baseName = baseName.replace(/[\\/:*?"<>|]/g, '_');
+      const outName = `${baseName}_watermarked.pdf`;
+
+      // الحفظ في الأرشيف — نفس توقيع بقية الشاشات: (base64, name, kind)
+      const saved = await saveToArchive(outB64, outName, 'watermark');
       setProgress(100);
 
-      router.push({
-        pathname: '/result',
-        params: { path: savedPath, name: `${baseName}_watermarked.pdf` },
-      });
+      if (saved) {
+        router.push({
+          pathname: '/result',
+          params: {
+            name: saved.name,
+            uri: saved.uri,
+            size: String(saved.size),
+            kind: saved.kind,
+          },
+        });
+      }
     } catch (e: any) {
-      Alert.alert(t('wmErrorT'), e?.message || t('wmError'));
+      Alert.alert(t('wmFailed'), e?.message || t('error'));
     } finally {
       setBusy(false);
       setProgress(0);
@@ -118,6 +125,7 @@ export default function WatermarkScreen() {
   }
 
   const isAr = hasArabic(wmText);
+  const txtBusy = isRTL ? 'جارٍ المعالجة…' : 'Processing…';
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -134,7 +142,7 @@ export default function WatermarkScreen() {
       <TouchableOpacity style={styles.fileBox} onPress={pickFile}>
         <FileText size={20} color="#7C3AED" />
         <Text style={styles.fileText} numberOfLines={1}>
-          {fileName || t('wmPickFile')}
+          {fileName || t('pickPdf')}
         </Text>
       </TouchableOpacity>
 
@@ -150,21 +158,23 @@ export default function WatermarkScreen() {
 
       <Text style={styles.label}>{t('wmOpacity')}</Text>
       <View style={styles.opacityRow}>
-        {(['light', 'medium', 'strong'] as Opacity[]).map((lvl) => {
-          const active = opacity === lvl;
-          return (
-            <TouchableOpacity
-              key={lvl}
-              style={[styles.opacityBtn, active && styles.opacityBtnActive]}
-              onPress={() => setOpacity(lvl)}
-            >
-              {active && <Check size={14} color="#fff" />}
-              <Text style={[styles.opacityText, active && styles.opacityTextActive]}>
-                {t(`wmOpacity_${lvl}`)}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+        {([['light', 'wmOpacity_light'], ['medium', 'wmOpacity_medium'], ['strong', 'wmOpacity_strong']] as [Opacity, string][]).map(
+          ([lvl, key]) => {
+            const active = opacity === lvl;
+            return (
+              <TouchableOpacity
+                key={lvl}
+                style={[styles.opacityBtn, active && styles.opacityBtnActive]}
+                onPress={() => setOpacity(lvl)}
+              >
+                {active && <Check size={14} color="#fff" />}
+                <Text style={[styles.opacityText, active && styles.opacityTextActive]}>
+                  {t(key)}
+                </Text>
+              </TouchableOpacity>
+            );
+          }
+        )}
       </View>
 
       <View style={styles.noteBox}>
@@ -180,7 +190,7 @@ export default function WatermarkScreen() {
           <View style={styles.busyRow}>
             <ActivityIndicator color="#fff" />
             <Text style={styles.runText}>
-              {progress > 0 ? `${t('wmRunning')} ${progress}%` : t('wmRunning')}
+              {progress > 0 ? `${txtBusy} ${progress}%` : txtBusy}
             </Text>
           </View>
         ) : (

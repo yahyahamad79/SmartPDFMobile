@@ -21,6 +21,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { TrialProvider, useTrial } from '@/lib/trial';
 import { LangProvider } from '@/lib/i18n';
+import { useServerWarmup } from '@/lib/useServerWarmup';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -89,6 +90,9 @@ function PremiumGuard({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  // إيقاظ استباقي خفيف لخادم Render (ping عند الفتح وعند العودة من الخلفية)
+  useServerWarmup();
 
   return (
     <LangProvider>
