@@ -1,0 +1,55 @@
+// ═══════════════════════════════════════════════════════════════
+// مفاتيح الترجمة — العلامة المائية + الضغط
+// ───────────────────────────────────────────────────────────────
+// الصق هذه المفاتيح داخل كائن الترجمة في ملف lib/i18n.tsx عندك
+// (داخل نفس الكائن الذي يحوي toolMerge و toolSplit … إلخ).
+// إن وُجدت مفاتيح wm* أو cmp* قديمة، استبدلها بهذه.
+// ═══════════════════════════════════════════════════════════════
+
+  // ── أدوات قائمة الأدوات الرئيسية ──
+  toolWatermark:      { ar: 'علامة مائية',          en: 'Watermark' },
+  toolWatermarkDesc:  { ar: 'نص مائل على كل صفحة',  en: 'Diagonal text on every page' },
+  toolCompress:       { ar: 'ضغط الملفات',          en: 'Compress' },
+  toolCompressDesc:   { ar: 'تصغير حجم الـ PDF',    en: 'Reduce PDF size' },
+
+  // ── شاشة العلامة المائية ──
+  wmTitle:            { ar: 'علامة مائية',          en: 'Watermark' },
+  wmPickFile:         { ar: 'اختر ملف PDF',          en: 'Choose a PDF file' },
+  wmTextLabel:        { ar: 'نص العلامة',            en: 'Watermark text' },
+  wmTextPlaceholder:  { ar: 'مثال: سرّي، اسم جهتك…', en: 'e.g. Confidential, your name…' },
+  wmOpacity:          { ar: 'الشفافية',              en: 'Opacity' },
+  wmOpacity_light:    { ar: 'خفيفة',                 en: 'Light' },
+  wmOpacity_medium:   { ar: 'متوسطة',                en: 'Medium' },
+  wmOpacity_strong:   { ar: 'قوية',                  en: 'Strong' },
+  wmNote:             { ar: 'يُضاف النص مائلاً في وسط كل صفحة بشفافية. يدعم العربية والإنجليزية ويعمل بدون إنترنت.', en: 'Adds the text diagonally centered on every page. Supports Arabic & English, works offline.' },
+  wmBtn:              { ar: 'إضافة العلامة وحفظ',    en: 'Add watermark & Save' },
+  wmRunning:          { ar: 'جارٍ المعالجة…',        en: 'Processing…' },
+  wmNoFileT:          { ar: 'لا يوجد ملف',           en: 'No file' },
+  wmNoFile:           { ar: 'اختر ملف PDF أولاً.',   en: 'Please choose a PDF file first.' },
+  wmNoTextT:          { ar: 'لا يوجد نص',            en: 'No text' },
+  wmNoText:           { ar: 'أدخل نص العلامة المائية أولاً.', en: 'Please enter the watermark text first.' },
+  wmErrorT:           { ar: 'تعذّرت المعالجة',       en: 'Processing failed' },
+  wmError:            { ar: 'حدث خطأ أثناء إضافة العلامة. حاول بملف آخر.', en: 'An error occurred. Try another file.' },
+
+  // ── شاشة الضغط ──
+  cmpTitle:           { ar: 'ضغط الملفات',          en: 'Compress PDF' },
+  cmpOnlineNote:      { ar: 'تعمل عبر الإنترنت. أول طلب بعد فترة خمول قد يستغرق دقيقة لإيقاظ الخادم.', en: 'Works online. The first request after idle may take a minute to wake the server.' },
+  cmpPickFile:        { ar: 'اختر ملف PDF',          en: 'Choose a PDF file' },
+  cmpLevel:           { ar: 'مستوى الضغط',           en: 'Compression level' },
+  cmpLevel_low:       { ar: 'خفيف',                  en: 'Low' },
+  cmpLevel_medium:    { ar: 'متوازن',                en: 'Balanced' },
+  cmpLevel_high:      { ar: 'أقصى',                  en: 'Maximum' },
+  cmpBtn:             { ar: 'ضغط الملف',             en: 'Compress' },
+  cmpHint:            { ar: 'الملفات الكبيرة قد تستغرق وقتاً أطول. لا تُغلق الشاشة أثناء المعالجة.', en: 'Large files may take longer. Keep the screen open while processing.' },
+  cmpRunning:         { ar: 'جارٍ المعالجة…',        en: 'Processing…' },
+  cmpWaking:          { ar: 'إيقاظ الخادم…',         en: 'Waking server…' },
+  cmpUploading:       { ar: 'رفع وضغط الملف…',       en: 'Uploading & compressing…' },
+  cmpSaving:          { ar: 'حفظ الناتج…',           en: 'Saving result…' },
+  cmpDone:            { ar: 'تم الضغط: {from}KB ← {to}KB (وفّرت {pct}%)', en: 'Done: {from}KB → {to}KB (saved {pct}%)' },
+  cmpNoFileT:         { ar: 'لا يوجد ملف',           en: 'No file' },
+  cmpNoFile:          { ar: 'اختر ملف PDF أولاً.',   en: 'Please choose a PDF file first.' },
+  cmpTooLarge:        { ar: 'الملف كبير جداً (الحد 100 ميجابايت).', en: 'File too large (max 100MB).' },
+  cmpTimeout:         { ar: 'استغرقت المعالجة وقتاً طويلاً. جرّب مستوى ضغط أعلى أو ملفاً أصغر.', en: 'Processing took too long. Try a higher level or a smaller file.' },
+  cmpWakeFail:        { ar: 'تعذّر الوصول للخادم. تأكد من اتصالك بالإنترنت وحاول مجدداً.', en: 'Could not reach the server. Check your connection and retry.' },
+  cmpErrorT:          { ar: 'تعذّر الضغط',           en: 'Compression failed' },
+  cmpError:           { ar: 'حدث خطأ أثناء الضغط. حاول مجدداً.', en: 'An error occurred. Please try again.' },

@@ -1,0 +1,30 @@
+// ─────────────────────────────────────────────────────────────
+// مفاتيح i18n للعلامة المائية (محدّثة لدعم العربية)
+// أضِف/استبدل هذه المفاتيح داخل كائن الترجمة في lib/i18n.tsx
+// (إن وُجدت مفاتيح wm* قديمة، استبدلها بهذه — فيها مفاتيح جديدة)
+// ─────────────────────────────────────────────────────────────
+
+  // أداة العلامة المائية (في قائمة الأدوات)
+  toolWatermark:      { ar: 'علامة مائية',          en: 'Watermark' },
+  toolWatermarkDesc:  { ar: 'نص مائل على كل صفحة',  en: 'Diagonal text on every page' },
+
+  // شاشة العلامة المائية
+  wmTitle:            { ar: 'علامة مائية',          en: 'Watermark' },
+  wmPickFile:         { ar: 'اختر ملف PDF',          en: 'Choose a PDF file' },
+  wmTextLabel:        { ar: 'نص العلامة',            en: 'Watermark text' },
+  wmTextPlaceholder:  { ar: 'مثال: سرّي، اسم جهتك…', en: 'e.g. Confidential, your name…' },
+  wmOpacity:          { ar: 'الشفافية',              en: 'Opacity' },
+  wmOpacity_light:    { ar: 'خفيفة',                 en: 'Light' },
+  wmOpacity_medium:   { ar: 'متوسطة',                en: 'Medium' },
+  wmOpacity_strong:   { ar: 'قوية',                  en: 'Strong' },
+  wmNote:             { ar: 'يُضاف النص مائلاً في وسط كل صفحة بشفافية. يدعم العربية والإنجليزية ويعمل بدون إنترنت.', en: 'Adds the text diagonally centered on every page. Supports Arabic & English, works offline.' },
+  wmBtn:              { ar: 'إضافة العلامة وحفظ',    en: 'Add watermark & Save' },
+  wmRunning:          { ar: 'جارٍ المعالجة…',        en: 'Processing…' },
+
+  // تنبيهات
+  wmNoFileT:          { ar: 'لا يوجد ملف',           en: 'No file' },
+  wmNoFile:           { ar: 'اختر ملف PDF أولاً.',   en: 'Please choose a PDF file first.' },
+  wmNoTextT:          { ar: 'لا يوجد نص',            en: 'No text' },
+  wmNoText:           { ar: 'أدخل نص العلامة المائية أولاً.', en: 'Please enter the watermark text first.' },
+  wmErrorT:           { ar: 'تعذّرت المعالجة',       en: 'Processing failed' },
+  wmError:            { ar: 'حدث خطأ أثناء إضافة العلامة. حاول بملف آخر.', en: 'An error occurred. Try another file.' },

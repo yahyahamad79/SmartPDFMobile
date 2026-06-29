@@ -1,0 +1,35 @@
+// ─────────────────────────────────────────────────────────────
+// مفاتيح i18n لشاشة الضغط (محدّثة للملفات الكبيرة)
+// أضِف/استبدل داخل كائن الترجمة في lib/i18n.tsx
+// ─────────────────────────────────────────────────────────────
+
+  // أداة الضغط (في قائمة الأدوات)
+  toolCompress:       { ar: 'ضغط الملفات',          en: 'Compress' },
+  toolCompressDesc:   { ar: 'تصغير حجم الـ PDF',    en: 'Reduce PDF size' },
+
+  // شاشة الضغط
+  cmpTitle:           { ar: 'ضغط الملفات',          en: 'Compress PDF' },
+  cmpOnlineNote:      { ar: 'تعمل عبر الإنترنت. أول طلب بعد فترة خمول قد يستغرق دقيقة لإيقاظ الخادم.', en: 'Works online. The first request after idle may take a minute to wake the server.' },
+  cmpPickFile:        { ar: 'اختر ملف PDF',          en: 'Choose a PDF file' },
+  cmpLevel:           { ar: 'مستوى الضغط',           en: 'Compression level' },
+  cmpLevel_low:       { ar: 'خفيف',                  en: 'Low' },
+  cmpLevel_medium:    { ar: 'متوازن',                en: 'Balanced' },
+  cmpLevel_high:      { ar: 'أقصى',                  en: 'Maximum' },
+  cmpBtn:             { ar: 'ضغط الملف',             en: 'Compress' },
+  cmpHint:            { ar: 'الملفات الكبيرة قد تستغرق وقتاً أطول. لا تُغلق الشاشة أثناء المعالجة.', en: 'Large files may take longer. Keep the screen open while processing.' },
+
+  // مراحل المعالجة
+  cmpRunning:         { ar: 'جارٍ المعالجة…',        en: 'Processing…' },
+  cmpWaking:          { ar: 'إيقاظ الخادم…',         en: 'Waking server…' },
+  cmpUploading:       { ar: 'رفع وضغط الملف…',       en: 'Uploading & compressing…' },
+  cmpSaving:          { ar: 'حفظ الناتج…',           en: 'Saving result…' },
+  cmpDone:            { ar: 'تم الضغط: {from}KB ← {to}KB (وفّرت {pct}%)', en: 'Done: {from}KB → {to}KB (saved {pct}%)' },
+
+  // تنبيهات
+  cmpNoFileT:         { ar: 'لا يوجد ملف',           en: 'No file' },
+  cmpNoFile:          { ar: 'اختر ملف PDF أولاً.',   en: 'Please choose a PDF file first.' },
+  cmpTooLarge:        { ar: 'الملف كبير جداً (الحد 100 ميجابايت).', en: 'File too large (max 100MB).' },
+  cmpTimeout:         { ar: 'استغرقت المعالجة وقتاً طويلاً. جرّب مستوى ضغط أعلى أو ملفاً أصغر.', en: 'Processing took too long. Try a higher level or a smaller file.' },
+  cmpWakeFail:        { ar: 'تعذّر الوصول للخادم. تأكد من اتصالك بالإنترنت وحاول مجدداً.', en: 'Could not reach the server. Check your connection and retry.' },
+  cmpErrorT:          { ar: 'تعذّر الضغط',           en: 'Compression failed' },
+  cmpError:           { ar: 'حدث خطأ أثناء الضغط. حاول مجدداً.', en: 'An error occurred. Please try again.' },

@@ -1,228 +1,238 @@
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
-import { useRouter } from 'expo-router';
-import { PDFDocument, rgb, degrees, StandardFonts } from '@cantoo/pdf-lib';
+// ─────────────────────────────────────────────────────────────
+// app/watermark-pdf.tsx
+// العلامة المائية (offline) — مع دعم العربية ومعالجة الملفات الكبيرة:
+//  • base64 سريع عبر base64-js (بدل الحلقات اليدوية البطيئة على Hermes)
+//  • شريط تقدّم + yield للواجهة كل دفعة صفحات (يمنع التجمّد)
+//  • دعم العربية الكامل (تشكيل الحروف عبر arabic-reshaper + خط Amiri مضمّن)
+// ─────────────────────────────────────────────────────────────
+
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useLang } from '@/lib/i18n';
+import { useRouter } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import { PDFDocument, degrees, rgb } from '@cantoo/pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
+import { toByteArray, fromByteArray } from 'base64-js';
+import { Stamp, FileText, ChevronLeft, Check } from 'lucide-react-native';
+
+import { t } from '@/lib/i18n';
 import { saveToArchive } from '@/lib/archive';
+import { AMIRI_FONT_BASE64 } from '@/lib/amiriFont';
+import { shapeForPdf, hasArabic } from '@/lib/arabicText';
 
-/**
- * Watermark PDF — adds a diagonal semi-transparent TEXT watermark on
- * every page. Fully offline (pdf-lib). No native libs, no internet.
- */
+type Opacity = 'light' | 'medium' | 'strong';
+const OPACITY_VALUES: Record<Opacity, number> = {
+  light: 0.12, medium: 0.22, strong: 0.35,
+};
 
-type PickedFile = { uri: string; name: string; size?: number; pageCount: number };
+// يترك الواجهة تتنفّس (يمنع التجمّد على JS thread)
+const yieldToUI = () => new Promise((r) => setTimeout(r, 0));
 
-const OPACITIES = [
-  { key: 'light',  value: 0.12 },
-  { key: 'medium', value: 0.22 },
-  { key: 'strong', value: 0.35 },
-];
-
-export default function WatermarkPdfScreen() {
+export default function WatermarkScreen() {
   const router = useRouter();
-  const { t, isRTL } = useLang();
-  const [file, setFile] = useState<PickedFile | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [fileUri, setFileUri] = useState<string | null>(null);
+  const [wmText, setWmText] = useState('');
+  const [opacity, setOpacity] = useState<Opacity>('medium');
   const [busy, setBusy] = useState(false);
-  const [text, setText] = useState('');
-  const [opacityIdx, setOpacityIdx] = useState(1);
-  const [outputName, setOutputName] = useState('watermarked');
+  const [progress, setProgress] = useState(0); // 0..100
 
-  const rowDir = isRTL ? 'row-reverse' : 'row';
-  const txtAlign: 'right' | 'left' = isRTL ? 'right' : 'left';
+  async function pickFile() {
+    const res = await DocumentPicker.getDocumentAsync({
+      type: 'application/pdf', copyToCacheDirectory: true,
+    });
+    if (res.canceled || !res.assets?.length) return;
+    setFileUri(res.assets[0].uri);
+    setFileName(res.assets[0].name);
+  }
 
-  const readAsBase64 = async (uri: string) =>
-    await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-
-  const pickFile = async () => {
-    try {
-      const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
-      if (res.canceled || !res.assets?.length) return;
-      const a = res.assets[0];
-      const b64 = await readAsBase64(a.uri);
-      const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
-      setFile({ uri: a.uri, name: a.name, size: a.size ?? undefined, pageCount: doc.getPageCount() });
-    } catch {
-      Alert.alert(t('error'), t('couldNotRead'));
-    }
-  };
-
-  const finalFileName = () => {
-    let n = (outputName || 'watermarked').trim();
-    n = n.replace(/[\\/:*?"<>|]/g, '_');
-    if (!n.toLowerCase().endsWith('.pdf')) n += '.pdf';
-    return n;
-  };
-
-  const applyWatermark = async () => {
-    if (!file) { Alert.alert(t('noFile'), t('noFilePick')); return; }
-    if (!text.trim()) { Alert.alert(t('wmNoTextT'), t('wmNoText')); return; }
+  async function run() {
+    if (!fileUri) { Alert.alert(t('wmNoFileT'), t('wmNoFile')); return; }
+    if (!wmText.trim()) { Alert.alert(t('wmNoTextT'), t('wmNoText')); return; }
 
     setBusy(true);
+    setProgress(0);
     try {
-      const b64 = await readAsBase64(file.uri);
-      const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
-      const font = await doc.embedFont(StandardFonts.HelveticaBold);
-      const opacity = OPACITIES[opacityIdx].value;
-      const wm = text.trim();
+      // 1) اقرأ الملف (base64) ثم حوّله لبايتات بسرعة
+      const b64 = await FileSystem.readAsStringAsync(fileUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      await yieldToUI();
+      const srcBytes = toByteArray(b64);
+      await yieldToUI();
 
+      // 2) جهّز المستند والخط
+      const doc = await PDFDocument.load(srcBytes);
+      doc.registerFontkit(fontkit);
+      const font = await doc.embedFont(toByteArray(AMIRI_FONT_BASE64), { subset: false });
+      const drawText = shapeForPdf(wmText.trim());
+      const op = OPACITY_VALUES[opacity];
+
+      // 3) ارسم على كل صفحة، على دفعات مع تحديث التقدّم
       const pages = doc.getPages();
-      for (const page of pages) {
+      const total = pages.length;
+      const BATCH = 15;
+      for (let i = 0; i < total; i++) {
+        const page = pages[i];
         const { width, height } = page.getSize();
-        // حجم خp يتناسب مع عرض الصفحة وطول النص
-        const size = Math.max(24, Math.min(width, height) / Math.max(6, wm.length) * 1.6);
-        const textWidth = font.widthOfTextAtSize(wm, size);
-        // وسّط النص قطرياً (45 درجة)
-        const cx = width / 2;
-        const cy = height / 2;
-        // إزاحة لمنتصف النص بعد الدوران
-        const angleRad = (45 * Math.PI) / 180;
-        const offX = (textWidth / 2) * Math.cos(angleRad);
-        const offY = (textWidth / 2) * Math.sin(angleRad);
-        page.drawText(wm, {
-          x: cx - offX,
-          y: cy - offY,
-          size,
-          font,
-          color: rgb(0.5, 0.5, 0.5),
-          opacity,
-          rotate: degrees(45),
+        const size = Math.max(28, Math.min(width, height) / 12);
+        const tw = font.widthOfTextAtSize(drawText, size);
+        page.drawText(drawText, {
+          x: width / 2 - (tw / 2) * 0.7071,
+          y: height / 2 - (tw / 2) * 0.7071,
+          size, font, color: rgb(0.5, 0.5, 0.5),
+          opacity: op, rotate: degrees(45),
         });
+        if ((i + 1) % BATCH === 0 || i === total - 1) {
+          setProgress(Math.round(((i + 1) / total) * 90)); // حتى 90%
+          await yieldToUI();
+        }
       }
 
-      const outB64 = await doc.saveAsBase64();
-      const fileName = finalFileName();
-      const saved = await saveToArchive(outB64, fileName, 'watermark');
-      if (saved) {
-        router.push({ pathname: '/result', params: { name: saved.name, uri: saved.uri, size: String(saved.size), kind: saved.kind } });
-      }
+      // 4) احفظ (useObjectStreams:false للتوافق)
+      const outBytes = await doc.save({ useObjectStreams: false });
+      await yieldToUI();
+      setProgress(95);
+      const outB64 = fromByteArray(outBytes);
+      await yieldToUI();
+
+      // 5) خزّن في الأرشيف
+      const baseName = (fileName || 'document.pdf').replace(/\.pdf$/i, '');
+      const savedPath = await saveToArchive(`${baseName}_watermarked.pdf`, outB64);
+      setProgress(100);
+
+      router.push({
+        pathname: '/result',
+        params: { path: savedPath, name: `${baseName}_watermarked.pdf` },
+      });
     } catch (e: any) {
-      Alert.alert(t('wmFailed'), e?.message ? String(e.message) : 'Unknown error');
+      Alert.alert(t('wmErrorT'), e?.message || t('wmError'));
     } finally {
       setBusy(false);
+      setProgress(0);
     }
-  };
+  }
 
-  const formatSize = (b?: number) => {
-    if (!b) return '';
-    if (b < 1024) return `${b} B`;
-    if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
-    return `${(b / 1048576).toFixed(2)} MB`;
-  };
-
-  const canRun = !!file && !busy && !!text.trim();
+  const isAr = hasArabic(wmText);
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={[styles.header, { flexDirection: rowDir }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>{isRTL ? '›' : '‹'} {t('back')}</Text>
-          </TouchableOpacity>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <ChevronLeft size={24} color="#5B2C9E" />
+        </TouchableOpacity>
+        <View style={styles.titleRow}>
+          <Stamp size={22} color="#7C3AED" />
           <Text style={styles.title}>{t('wmTitle')}</Text>
         </View>
+      </View>
 
-        <TouchableOpacity style={styles.pickBox} onPress={pickFile} activeOpacity={0.8}>
-          <View style={styles.pickIcon}><Ionicons name="document-text-outline" size={26} color="#7C3AED" /></View>
-          <Text style={[styles.pickTitle, { textAlign: txtAlign }]}>
-            {file ? file.name : t('pickPdf')}
-          </Text>
-          {file ? (
-            <Text style={[styles.pickMeta, { textAlign: txtAlign }]}>
-              {file.pageCount} {t('pages')} · {formatSize(file.size)}
-            </Text>
-          ) : null}
-        </TouchableOpacity>
+      <TouchableOpacity style={styles.fileBox} onPress={pickFile}>
+        <FileText size={20} color="#7C3AED" />
+        <Text style={styles.fileText} numberOfLines={1}>
+          {fileName || t('wmPickFile')}
+        </Text>
+      </TouchableOpacity>
 
-        {file ? (
-          <>
-            <Text style={[styles.label, { textAlign: txtAlign }]}>{t('wmTextLabel')}</Text>
-            <TextInput
-              style={[styles.input, { textAlign: txtAlign }]}
-              placeholder={t('wmTextPlaceholder')}
-              placeholderTextColor="#A99FBE"
-              value={text}
-              onChangeText={setText}
-              maxLength={40}
-            />
+      <Text style={styles.label}>{t('wmTextLabel')}</Text>
+      <TextInput
+        style={styles.input}
+        placeholder={t('wmTextPlaceholder')}
+        placeholderTextColor="#A99CC9"
+        value={wmText}
+        onChangeText={setWmText}
+        textAlign={isAr ? 'right' : 'left'}
+      />
 
-            <Text style={[styles.label, { textAlign: txtAlign }]}>{t('wmOpacity')}</Text>
-            <View style={[styles.opacityRow, { flexDirection: rowDir }]}>
-              {OPACITIES.map((o, i) => (
-                <TouchableOpacity
-                  key={o.key}
-                  style={[styles.opacityChip, opacityIdx === i && styles.opacityChipActive]}
-                  onPress={() => setOpacityIdx(i)}
-                >
-                  <Text style={[styles.opacityText, opacityIdx === i && styles.opacityTextActive]}>
-                    {t('wmOpacity_' + o.key)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.label, { textAlign: txtAlign }]}>{t('outputName')}</Text>
-            <TextInput
-              style={[styles.input, { textAlign: txtAlign }]}
-              value={outputName}
-              onChangeText={setOutputName}
-              placeholder="watermarked"
-              placeholderTextColor="#A99FBE"
-            />
-
-            <Text style={[styles.note, { textAlign: txtAlign }]}>{t('wmNote')}</Text>
-
+      <Text style={styles.label}>{t('wmOpacity')}</Text>
+      <View style={styles.opacityRow}>
+        {(['light', 'medium', 'strong'] as Opacity[]).map((lvl) => {
+          const active = opacity === lvl;
+          return (
             <TouchableOpacity
-              style={[styles.runBtn, !canRun && styles.runBtnDisabled]}
-              onPress={applyWatermark}
-              disabled={!canRun}
-              activeOpacity={0.85}
+              key={lvl}
+              style={[styles.opacityBtn, active && styles.opacityBtnActive]}
+              onPress={() => setOpacity(lvl)}
             >
-              {busy ? <ActivityIndicator color="#fff" /> : (
-                <Text style={styles.runText}>{t('wmBtn')}</Text>
-              )}
+              {active && <Check size={14} color="#fff" />}
+              <Text style={[styles.opacityText, active && styles.opacityTextActive]}>
+                {t(`wmOpacity_${lvl}`)}
+              </Text>
             </TouchableOpacity>
-          </>
-        ) : null}
+          );
+        })}
+      </View>
 
-        <View style={{ height: 24 }} />
-      </ScrollView>
-    </SafeAreaView>
+      <View style={styles.noteBox}>
+        <Text style={styles.noteText}>{t('wmNote')}</Text>
+      </View>
+
+      <TouchableOpacity
+        style={[styles.runBtn, busy && styles.runBtnDisabled]}
+        onPress={run}
+        disabled={busy}
+      >
+        {busy ? (
+          <View style={styles.busyRow}>
+            <ActivityIndicator color="#fff" />
+            <Text style={styles.runText}>
+              {progress > 0 ? `${t('wmRunning')} ${progress}%` : t('wmRunning')}
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.runText}>{t('wmBtn')}</Text>
+        )}
+      </TouchableOpacity>
+
+      {busy && progress > 0 && (
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+        </View>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F4F2FA' },
-  scroll: { padding: 16 },
-  header: { alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  backBtn: { padding: 4 },
-  backText: { color: '#7C3AED', fontSize: 15, fontWeight: '500' },
-  title: { color: '#2E2148', fontSize: 18, fontWeight: '500' },
-  pickBox: { backgroundColor: '#fff', borderWidth: 0.5, borderColor: '#ECE7F5', borderRadius: 16, padding: 20, alignItems: 'center', marginBottom: 16 },
-  pickIcon: { width: 52, height: 52, borderRadius: 14, backgroundColor: '#EEE8FB', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  pickTitle: { color: '#2E2148', fontSize: 14, fontWeight: '500', width: '100%' },
-  pickMeta: { color: '#9388AE', fontSize: 12, marginTop: 4, width: '100%' },
-  label: { color: '#6B6088', fontSize: 13, fontWeight: '500', marginBottom: 8, marginTop: 4 },
-  input: { backgroundColor: '#fff', borderWidth: 0.5, borderColor: '#ECE7F5', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: '#2E2148', fontSize: 15, marginBottom: 16 },
-  opacityRow: { gap: 8, marginBottom: 16 },
-  opacityChip: { flex: 1, backgroundColor: '#fff', borderWidth: 0.5, borderColor: '#ECE7F5', borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
-  opacityChipActive: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
-  opacityText: { color: '#6B6088', fontSize: 13, fontWeight: '500' },
+  screen: { flex: 1, backgroundColor: '#F4F2FA' },
+  content: { padding: 16, paddingBottom: 40 },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  backBtn: { padding: 4, marginEnd: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { fontSize: 20, fontWeight: '700', color: '#3D2A66' },
+  fileBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#fff', borderRadius: 14, padding: 16,
+    borderWidth: 1, borderColor: '#ECE7F5', marginBottom: 20,
+  },
+  fileText: { flex: 1, color: '#5B2C9E', fontSize: 14 },
+  label: { fontSize: 13, fontWeight: '600', color: '#6B5B95', marginBottom: 8, textAlign: 'right' },
+  input: {
+    backgroundColor: '#fff', borderRadius: 12, padding: 14, fontSize: 15,
+    color: '#3D2A66', borderWidth: 1, borderColor: '#ECE7F5', marginBottom: 20,
+  },
+  opacityRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  opacityBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 12, borderRadius: 12, backgroundColor: '#fff',
+    borderWidth: 1, borderColor: '#ECE7F5',
+  },
+  opacityBtnActive: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
+  opacityText: { fontSize: 14, color: '#6B5B95', fontWeight: '500' },
   opacityTextActive: { color: '#fff' },
-  note: { color: '#9388AE', fontSize: 12, marginBottom: 16, lineHeight: 18 },
+  noteBox: { backgroundColor: '#EEE8FB', borderRadius: 12, padding: 12, marginBottom: 20 },
+  noteText: { color: '#5B2C9E', fontSize: 12, lineHeight: 18, textAlign: 'right' },
   runBtn: { backgroundColor: '#7C3AED', borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
   runBtnDisabled: { backgroundColor: '#C8BBE8' },
-  runText: { color: '#fff', fontSize: 15, fontWeight: '500' },
+  busyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  runText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  progressTrack: {
+    height: 6, backgroundColor: '#E5DEF5', borderRadius: 3,
+    marginTop: 12, overflow: 'hidden',
+  },
+  progressFill: { height: 6, backgroundColor: '#7C3AED', borderRadius: 3 },
 });
