@@ -1,9 +1,9 @@
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { applyRotationAndFilter, cropImage, getImageSize, Filter as ImgFilter } from '@/lib/imageFilters';
 import { useRouter } from 'expo-router';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { readFileBytes } from '@/lib/pdfBytes';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -87,17 +87,6 @@ export default function ImagesToPdfScreen() {
     const lower = uri.toLowerCase();
     if (lower.endsWith('.png')) return 'image/png';
     return 'image/jpeg';
-  };
-
-  const readAsBase64 = async (uri: string) =>
-    await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-
-  const base64ToBytes = (b64: string): Uint8Array => {
-    const binary = typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary');
-    const len = binary.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
   };
 
   const pickFromGallery = async () => {
@@ -339,8 +328,7 @@ export default function ImagesToPdfScreen() {
 
       for (const img of images) {
         const processed = await processImage(img);
-        const b64 = await readAsBase64(processed.uri);
-        const bytes = base64ToBytes(b64);
+        const bytes = await readFileBytes(processed.uri);
 
         let embedded;
         try {

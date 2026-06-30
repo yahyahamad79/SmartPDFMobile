@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument } from '@cantoo/pdf-lib';
+import { readPdfBytes, bytesToBase64 } from '@/lib/pdfBytes';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -43,22 +44,6 @@ export default function ProtectPdfScreen() {
   const [showPass, setShowPass] = useState(false);
   const [outputName, setOutputName] = useState('protected');
 
-  const readAsBase64 = async (uri: string) =>
-    await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-
-  const bytesToBase64 = (bytes: Uint8Array): string => {
-    let binary = '';
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode.apply(
-        null,
-        bytes.subarray(i, i + chunk) as unknown as number[]
-      );
-    }
-    if (typeof btoa === 'function') return btoa(binary);
-    // @ts-ignore
-    return Buffer.from(binary, 'binary').toString('base64');
-  };
 
   const pickFile = async () => {
     try {
@@ -69,8 +54,8 @@ export default function ProtectPdfScreen() {
       });
       if (result.canceled) return;
       const a = result.assets[0];
-      const b64 = await readAsBase64(a.uri);
-      const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
+      const srcBytes = await readPdfBytes(a.uri);
+      const doc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
       setFile({
         uri: a.uri,
         name: a.name,
@@ -140,8 +125,8 @@ export default function ProtectPdfScreen() {
 
     setBusy(true);
     try {
-      const b64 = await readAsBase64(file.uri);
-      const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
+      const srcBytes = await readPdfBytes(file.uri);
+      const doc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
 
       // @ts-ignore
       doc.encrypt({

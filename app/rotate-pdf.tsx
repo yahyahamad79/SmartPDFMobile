@@ -1,7 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import { PDFDocument, degrees } from 'pdf-lib';
+import { readPdfBytes } from '@/lib/pdfBytes';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -49,9 +49,6 @@ export default function RotatePdfScreen() {
   const txtAlign = isRTL ? 'right' : 'left';
   const previewSupported = isPdfPreviewAvailable();
 
-  const readAsBase64 = async (uri: string) =>
-    await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-
   const pickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -61,8 +58,8 @@ export default function RotatePdfScreen() {
       });
       if (result.canceled) return;
       const a = result.assets[0];
-      const b64 = await readAsBase64(a.uri);
-      const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
+      const srcBytes = await readPdfBytes(a.uri);
+      const doc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
       const count = doc.getPageCount();
       clearPreviewSession();
       setFile({ uri: a.uri, name: a.name, size: a.size ?? undefined, pageCount: count });
@@ -118,8 +115,8 @@ export default function RotatePdfScreen() {
     }
     setBusy(true);
     try {
-      const b64 = await readAsBase64(file.uri);
-      const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
+      const srcBytes = await readPdfBytes(file.uri);
+      const doc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
       const pages = doc.getPages();
 
       for (let p = 1; p <= file.pageCount; p++) {

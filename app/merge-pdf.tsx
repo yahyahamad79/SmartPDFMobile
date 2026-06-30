@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { readPdfBytes, yieldToUI } from '@/lib/pdfBytes';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -45,9 +46,6 @@ export default function MergePdfScreen() {
   const [outputName, setOutputName] = useState('merged');   // اسم الملف الناتج
   const [addNumbers, setAddNumbers] = useState(false);       // ترقيم الصفحات
 
-  const readAsBase64 = async (uri: string) =>
-    await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-
   // اختيار ملفات PDF + قراءة عدد صفحاتها
   const pickFiles = async () => {
     try {
@@ -61,8 +59,8 @@ export default function MergePdfScreen() {
       const picked: PickedFile[] = [];
       for (const a of result.assets) {
         try {
-          const b64 = await readAsBase64(a.uri);
-          const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
+          const srcBytes = await readPdfBytes(a.uri);
+          const doc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
           const count = doc.getPageCount();
           const all = Array.from({ length: count }, (_, i) => i + 1);
           picked.push({
@@ -160,11 +158,12 @@ export default function MergePdfScreen() {
 
       for (const f of files) {
         if (f.selected.length === 0) continue;
-        const b64 = await readAsBase64(f.uri);
-        const src = await PDFDocument.load(b64, { ignoreEncryption: true });
+        const srcBytes = await readPdfBytes(f.uri);
+        const src = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
         const indices = f.selected.map((p) => p - 1);
         const pages = await mergedPdf.copyPages(src, indices);
         pages.forEach((p) => mergedPdf.addPage(p));
+        await yieldToUI();
       }
 
       // ترقيم الصفحات أسفل المنتصف

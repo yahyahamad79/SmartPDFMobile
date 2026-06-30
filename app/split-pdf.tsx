@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument } from 'pdf-lib';
+import { readPdfBytes, bytesToBase64, yieldToUI } from '@/lib/pdfBytes';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -48,24 +49,6 @@ export default function SplitPdfScreen() {
   const [rangeText, setRangeText] = useState('');
   const [outputName, setOutputName] = useState('split');
 
-  const readAsBase64 = async (uri: string) =>
-    await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-
-  // Uint8Array -> base64 (للكتابة بعد save)
-  const bytesToBase64 = (bytes: Uint8Array): string => {
-    let binary = '';
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode.apply(
-        null,
-        bytes.subarray(i, i + chunk) as unknown as number[]
-      );
-    }
-    if (typeof btoa === 'function') return btoa(binary);
-    // @ts-ignore
-    return Buffer.from(binary, 'binary').toString('base64');
-  };
-
   const cleanBase = () => {
     let n = outputName.trim();
     if (!n) n = 'split';
@@ -106,8 +89,8 @@ export default function SplitPdfScreen() {
       });
       if (result.canceled) return;
       const a = result.assets[0];
-      const b64 = await readAsBase64(a.uri);
-      const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
+      const srcBytes = await readPdfBytes(a.uri);
+      const doc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
       const count = doc.getPageCount();
       setFile({
         uri: a.uri,
@@ -165,16 +148,17 @@ export default function SplitPdfScreen() {
     }
   };
 
-  // بناء مستند من مجموعة صفحات (0-based) -> base64 موثوق
-  // نعيد تحميل المصدر لكل ملف لضمان نسخ سليم
+  // بناء مستند من مجموعة صفحات (0-based) -> base64 موثوق.
+  // يستقبل المصدر محمّلاً مسبقاً (src) لتجنّب إعادة تحميله لكل ملف ناتج —
+  // هذا حاسم للملفات الكبيرة وأوضاع التقسيم متعددة المخرجات.
   const buildPdfBase64 = async (
-    srcBase64: string,
+    src: PDFDocument,
     indices: number[]
   ): Promise<string> => {
-    const src = await PDFDocument.load(srcBase64, { ignoreEncryption: true });
     const out = await PDFDocument.create();
     const pages = await out.copyPages(src, indices);
     pages.forEach((p) => out.addPage(p));
+    await yieldToUI();
     const bytes = await out.save({ useObjectStreams: false });
     return bytesToBase64(bytes);
   };
@@ -208,10 +192,10 @@ export default function SplitPdfScreen() {
 
     setBusy(true);
     try {
-      // نقرأ المصدر مرة واحدة كـ base64، ونعيد تحميله داخل buildPdfBase64 لكل ملف
-      const srcBase64 = await readAsBase64(file.uri);
-      const probe = await PDFDocument.load(srcBase64, { ignoreEncryption: true });
-      const total = probe.getPageCount();
+      // نقرأ المصدر مرة واحدة كبايتات، ونعيد استخدام نفس المستند لكل ملف ناتج
+      const srcBytes = await readPdfBytes(file.uri);
+      const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
+      const total = srcDoc.getPageCount();
 
       // نحدد قوائم الصفحات لكل ملف ناتج أولاً (قبل طلب الصلاحية)
       const jobs: { indices: number[]; name: string }[] = [];
@@ -239,7 +223,7 @@ export default function SplitPdfScreen() {
       let firstSaved: any = null;
       let savedCount = 0;
       for (const job of jobs) {
-        const b64 = await buildPdfBase64(srcBase64, job.indices);
+        const b64 = await buildPdfBase64(srcDoc, job.indices);
         const __s = await saveToArchive(b64, job.name, 'split');
         if (__s) {
           savedCount++;

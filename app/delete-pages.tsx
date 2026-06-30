@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument } from 'pdf-lib';
+import { readPdfBytes } from '@/lib/pdfBytes';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -42,9 +43,6 @@ export default function DeletePagesScreen() {
   const [busy, setBusy] = useState(false);
   const [outputName, setOutputName] = useState('edited');
 
-  const readAsBase64 = async (uri: string) =>
-    await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-
   const pickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -54,8 +52,8 @@ export default function DeletePagesScreen() {
       });
       if (result.canceled) return;
       const a = result.assets[0];
-      const b64 = await readAsBase64(a.uri);
-      const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
+      const srcBytes = await readPdfBytes(a.uri);
+      const doc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
       setFile({
         uri: a.uri,
         name: a.name,
@@ -147,8 +145,8 @@ export default function DeletePagesScreen() {
 
     setBusy(true);
     try {
-      const b64 = await readAsBase64(file.uri);
-      const doc = await PDFDocument.load(b64, { ignoreEncryption: true });
+      const srcBytes = await readPdfBytes(file.uri);
+      const doc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
 
       // نحذف من الأعلى للأسفل حتى لا تتغير الفهارس أثناء الحذف
       const sortedDesc = [...file.toDelete].sort((a, b) => b - a);
