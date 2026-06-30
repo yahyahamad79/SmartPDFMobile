@@ -21,7 +21,7 @@ import { saveToArchive } from '@/lib/archive';
 import { SERVER_URL as SERVER } from '@/lib/config';
 
 const WAKE_TIMEOUT = 70_000;
-const COMPRESS_TIMEOUT = 180_000;
+const COMPRESS_TIMEOUT = 240_000; // 4 دقائق — الملفات الكبيرة (مئات الصفحات) على Render المجاني بطيئة
 
 type Level = 'low' | 'medium' | 'high';
 
@@ -50,7 +50,7 @@ export default function CompressScreen() {
   const txtUploading = isRTL ? 'رفع وضغط الملف…' : 'Uploading & compressing…';
   const txtSaving    = isRTL ? 'حفظ الناتج…'     : 'Saving result…';
   const txtWakeFail  = isRTL ? 'تعذّر الوصول للخادم. تأكد من اتصالك وحاول مجدداً.' : 'Could not reach the server. Check your connection and retry.';
-  const txtTimeout   = isRTL ? 'استغرقت المعالجة وقتاً طويلاً. جرّب مستوى أعلى أو ملفاً أصغر.' : 'Processing took too long. Try a higher level or a smaller file.';
+  const txtTimeout   = isRTL ? 'الملف كبير وبه صور كثيرة، وتجاوزت معالجته وقت الخادم. جرّب تقسيمه أولاً (أداة التقسيم) ثم اضغط كل جزء.' : 'This file is large with many images and exceeded the server time. Try splitting it first, then compress each part.';
   const txtTooLarge  = isRTL ? 'الملف كبير جداً (الحد 100 ميجابايت).' : 'File too large (max 100MB).';
   const txtHint      = isRTL ? 'الملفات الكبيرة قد تستغرق وقتاً أطول. لا تُغلق الشاشة أثناء المعالجة.' : 'Large files may take longer. Keep the screen open while processing.';
 
@@ -63,7 +63,15 @@ export default function CompressScreen() {
     const a = res.assets[0];
     setFileUri(a.uri);
     setFileName(a.name);
-    setFileSizeKb(a.size ? Math.round(a.size / 1024) : 0);
+    const kb = a.size ? Math.round(a.size / 1024) : 0;
+    setFileSizeKb(kb);
+    // تحذير استباقي: الملفات الكبيرة (>8MB) على الخادم المجاني قد تتجاوز المهلة
+    if (kb > 8 * 1024) {
+      const warn = isRTL
+        ? 'هذا الملف كبير. ضغطه قد يستغرق دقائق وربما يتجاوز وقت الخادم المجاني. الأفضل تقسيمه أولاً ثم ضغط كل جزء.'
+        : 'This file is large. Compression may take minutes and could exceed the free server time. Consider splitting it first, then compress each part.';
+      Alert.alert(isRTL ? 'ملف كبير' : 'Large file', warn);
+    }
   }
 
   async function wakeServer(): Promise<boolean> {
