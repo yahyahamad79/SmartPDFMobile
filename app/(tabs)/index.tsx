@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -30,12 +30,12 @@ import {
 } from 'lucide-react-native';
 import { useLang } from '@/lib/i18n';
 import { useTrial } from '@/lib/trial';
+import { useTheme, ThemeColors } from '@/lib/theme';
 
 /**
- * شاشة الأدوات (الرئيسية) — تصميم بنفسجي فاتح عصري + أيقونات Lucide.
- * - نظام قوائم (بطاقات أفقية) لكل الأقسام.
- * - الرأس: الشعار + شارتا أوفلاين والمدة في الأعلى.
- * - يحافظ على روابط النظام (routes) و i18n و trial كما هي.
+ * شاشة الأدوات (الرئيسية) — تتبع نظام الثيم.
+ * ملاحظة: ألوان مربّعات أيقونات الأدوات (iconBg) تبقى ثابتة لأنها
+ * هوية بصرية لكل أداة (مثل الشعارات). ألوان الواجهة فقط تتبع الثيم.
  */
 
 type Tool = {
@@ -44,7 +44,7 @@ type Tool = {
   titleKey: string;
   descKey: string;
   Icon: LucideIcon;
-  iconBg: string;   // لون خلفية مربّع الأيقونة
+  iconBg: string;
 };
 
 const ORGANIZE: Tool[] = [
@@ -76,6 +76,9 @@ export default function ToolsScreen() {
   const router = useRouter();
   const { t, isRTL } = useLang();
   const { daysLeft, isTrialActive } = useTrial();
+  const { colors } = useTheme();
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const rowDir = isRTL ? 'row-reverse' : 'row';
   const txtAlign: 'right' | 'left' = isRTL ? 'right' : 'left';
@@ -106,7 +109,7 @@ export default function ToolsScreen() {
         {soon ? (
           <View style={styles.soonBadge}><Text style={styles.soonText}>{t('comingSoon')}</Text></View>
         ) : (
-          <Chevron color="#C2B8D8" size={18} strokeWidth={2} />
+          <Chevron color={colors.textMuted} size={18} strokeWidth={2} />
         )}
       </TouchableOpacity>
     );
@@ -129,12 +132,12 @@ export default function ToolsScreen() {
           </View>
           <View style={[styles.badges, { flexDirection: rowDir }]}>
             <View style={styles.offlinePill}>
-              <WifiOff color="#5B2C9E" size={12} strokeWidth={2.2} />
+              <WifiOff color={colors.primaryDark} size={12} strokeWidth={2.2} />
               <Text style={styles.offlineText}>{t('offline')}</Text>
             </View>
             {isTrialActive && daysLeft > 0 ? (
               <View style={styles.daysPill}>
-                <Clock color="#A62D5E" size={12} strokeWidth={2.2} />
+                <Clock color={colors.accent} size={12} strokeWidth={2.2} />
                 <Text style={styles.daysText}>{daysLeft} {t('daysWord')}</Text>
               </View>
             ) : null}
@@ -162,32 +165,33 @@ export default function ToolsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F4F2FA' },
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
 
-  topBar: { backgroundColor: '#FFFFFF', borderBottomWidth: 0.5, borderBottomColor: '#ECE7F5', paddingHorizontal: 18, paddingTop: 8, paddingBottom: 12 },
-  topRow: { alignItems: 'center', justifyContent: 'space-between' },
-  brand: { alignItems: 'center', gap: 10 },
-  logo: { width: 38, height: 38, borderRadius: 11, backgroundColor: '#7C3AED', alignItems: 'center', justifyContent: 'center' },
-  logoText: { color: '#fff', fontWeight: '500', fontSize: 13 },
-  appName: { fontSize: 18, fontWeight: '500', color: '#2E2148' },
-  badges: { alignItems: 'center', gap: 6 },
-  offlinePill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#E8DEF9', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
-  offlineText: { color: '#5B2C9E', fontSize: 11, fontWeight: '500' },
-  daysPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FCE3EE', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
-  daysText: { color: '#A62D5E', fontSize: 11, fontWeight: '500' },
+    topBar: { backgroundColor: c.surface, borderBottomWidth: 0.5, borderBottomColor: c.border, paddingHorizontal: 18, paddingTop: 8, paddingBottom: 12 },
+    topRow: { alignItems: 'center', justifyContent: 'space-between' },
+    brand: { alignItems: 'center', gap: 10 },
+    logo: { width: 38, height: 38, borderRadius: 11, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' },
+    logoText: { color: c.onPrimary, fontWeight: '500', fontSize: 13 },
+    appName: { fontSize: 18, fontWeight: '500', color: c.text },
+    badges: { alignItems: 'center', gap: 6 },
+    offlinePill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.surfaceAlt, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
+    offlineText: { color: c.primaryDark, fontSize: 11, fontWeight: '500' },
+    daysPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.accent + '22', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
+    daysText: { color: c.accent, fontSize: 11, fontWeight: '500' },
 
-  scroll: { padding: 14, paddingTop: 4 },
+    scroll: { padding: 14, paddingTop: 4 },
 
-  secHead: { alignItems: 'center', gap: 8, marginTop: 18, marginBottom: 10, paddingHorizontal: 4 },
-  secTitle: { color: '#6B6088', fontSize: 13, fontWeight: '500' },
-  secLine: { flex: 1, height: 0.5, backgroundColor: '#E5DEF2' },
+    secHead: { alignItems: 'center', gap: 8, marginTop: 18, marginBottom: 10, paddingHorizontal: 4 },
+    secTitle: { color: c.textMuted, fontSize: 13, fontWeight: '500' },
+    secLine: { flex: 1, height: 0.5, backgroundColor: c.border },
 
-  card: { alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF', borderWidth: 0.5, borderColor: '#ECE7F5', borderRadius: 14, padding: 11, paddingHorizontal: 13, marginBottom: 7 },
-  iconBox: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  cardTitle: { color: '#2E2148', fontSize: 14, fontWeight: '500' },
-  cardDesc: { color: '#9388AE', fontSize: 11, marginTop: 1 },
+    card: { alignItems: 'center', gap: 12, backgroundColor: c.surface, borderWidth: 0.5, borderColor: c.border, borderRadius: 14, padding: 11, paddingHorizontal: 13, marginBottom: 7 },
+    iconBox: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    cardTitle: { color: c.text, fontSize: 14, fontWeight: '500' },
+    cardDesc: { color: c.textMuted, fontSize: 11, marginTop: 1 },
 
-  soonBadge: { backgroundColor: '#FCE3EE', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
-  soonText: { color: '#A62D5E', fontSize: 10, fontWeight: '500' },
-});
+    soonBadge: { backgroundColor: c.accent + '22', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+    soonText: { color: c.accent, fontSize: 10, fontWeight: '500' },
+  });

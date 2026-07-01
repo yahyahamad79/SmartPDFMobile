@@ -116,6 +116,7 @@ const STRINGS: Record<string, { ar: string; en: string }> = {
   ended: { ar: 'منتهية', en: 'Ended' },
   upgradeFull: { ar: 'الترقية للنسخة الكاملة', en: 'Upgrade to full version' },
   general: { ar: 'عام', en: 'General' },
+  appearance: { ar: 'المظهر', en: 'Appearance' },
   language: { ar: 'اللغة', en: 'Language' },
   downloadFolder: { ar: 'مجلد التحميل', en: 'Download folder' },
   storageMgmt: { ar: 'إدارة الملفات', en: 'Storage' },

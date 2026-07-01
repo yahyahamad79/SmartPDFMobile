@@ -21,6 +21,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { TrialProvider, useTrial } from '@/lib/trial';
 import { LangProvider } from '@/lib/i18n';
+import { ThemeProvider as AppThemeProvider } from '@/lib/theme';
 import { useServerWarmup } from '@/lib/useServerWarmup';
 
 export const unstable_settings = {
@@ -96,6 +97,7 @@ export default function RootLayout() {
 
   return (
     <LangProvider>
+    <AppThemeProvider>
     <TrialProvider>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <PremiumGuard>
@@ -107,6 +109,7 @@ export default function RootLayout() {
         <StatusBar style="auto" />
       </ThemeProvider>
     </TrialProvider>
+    </AppThemeProvider>
     </LangProvider>
   );
 }

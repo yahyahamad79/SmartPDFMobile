@@ -1,4 +1,5 @@
 import { useLang } from '@/lib/i18n';
+import { useTheme } from '@/lib/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
@@ -13,21 +14,22 @@ import React from 'react';
  */
 export default function TabLayout() {
   const { t } = useLang();
+  const { colors } = useTheme();
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#0c1424',
-          borderTopColor: '#1e293b',
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
           borderTopWidth: 0.5,
           height: 62,
           paddingBottom: 8,
           paddingTop: 8,
         },
-        tabBarActiveTintColor: '#60a5fa',
-        tabBarInactiveTintColor: '#64748b',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
       }}
     >
