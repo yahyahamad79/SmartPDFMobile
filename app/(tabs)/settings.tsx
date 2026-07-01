@@ -3,11 +3,13 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Linking,
+  Modal,
   SafeAreaView,
   ScrollView,
   Share,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -17,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
 import { useTrial } from '@/lib/trial';
 import { clearArchive } from '@/lib/archive';
-import { useTheme, ThemeColors } from '@/lib/theme';
+import { useTheme, ThemeColors, deriveColors } from '@/lib/theme';
 
 const WHATSAPP_URL = 'https://wa.me/972599601769';
 const PRIVACY_URL = 'https://yahyahamad79.github.io/smartpdf-privacy/';
@@ -27,8 +29,40 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { t, lang, isRTL, toggleLang } = useLang();
   const { isTrialActive, daysLeft, tampered } = useTrial();
-  const { colors, themeId, setTheme, THEMES } = useTheme();
+  const { colors, themeId, setTheme, allThemes, addCustomTheme, deleteCustomTheme } = useTheme();
   const [dirLabel, setDirLabel] = useState<string>('Downloads/SmartPDF');
+
+  // حالة نافذة إنشاء ثيم مخصّص
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newColor, setNewColor] = useState('#7C3AED');
+  const [newDark, setNewDark] = useState(true);
+
+  // ألوان جاهزة للاختيار السريع عند إنشاء ثيم
+  const PALETTE = [
+    '#7C3AED', '#EC4899', '#EF4444', '#F97316', '#F59E0B',
+    '#10B981', '#14B8A6', '#0EA5E9', '#3B82F6', '#6366F1',
+    '#8B5CF6', '#A855F7',
+  ];
+
+  const createTheme = () => {
+    addCustomTheme({ name: newName.trim() || (isRTL ? 'ثيم مخصّص' : 'Custom'), primary: newColor, dark: newDark });
+    setShowCreate(false);
+    setNewName('');
+    setNewColor('#7C3AED');
+    setNewDark(true);
+  };
+
+  const confirmDeleteTheme = (id: string, name: string) => {
+    Alert.alert(
+      isRTL ? 'حذف الثيم' : 'Delete theme',
+      (isRTL ? 'حذف الثيم "' : 'Delete "') + name + (isRTL ? '"؟' : '"?'),
+      [
+        { text: t('cancel'), style: 'cancel' },
+        { text: t('delete'), style: 'destructive', onPress: () => deleteCustomTheme(id) },
+      ],
+    );
+  };
 
   // نبني الأنماط ديناميكياً من ألوان الثيم الحالي
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -122,7 +156,7 @@ export default function SettingsScreen() {
         <Text style={[styles.groupLabel, { textAlign: isRTL ? 'right' : 'left' }]}>{t('appearance')}</Text>
         <View style={styles.group}>
           <View style={styles.themeWrap}>
-            {THEMES.map((th) => {
+            {allThemes.map((th) => {
               const selected = th.id === themeId;
               return (
                 <TouchableOpacity
@@ -133,6 +167,7 @@ export default function SettingsScreen() {
                     selected && { borderWidth: 2 },
                   ]}
                   onPress={() => setTheme(th.id)}
+                  onLongPress={() => th.custom && confirmDeleteTheme(th.id, isRTL ? th.name.ar : th.name.en)}
                   activeOpacity={0.8}
                 >
                   {/* معاينة مصغّرة لألوان الثيم */}
@@ -143,15 +178,28 @@ export default function SettingsScreen() {
                     <View style={[styles.swatch, { backgroundColor: th.colors.accent }]} />
                   </View>
                   <View style={[styles.themeNameRow, { flexDirection: rowDir }]}>
-                    <Text style={styles.themeName}>{isRTL ? th.name.ar : th.name.en}</Text>
+                    <Text style={styles.themeName} numberOfLines={1}>{isRTL ? th.name.ar : th.name.en}</Text>
                     {selected ? (
                       <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+                    ) : th.custom ? (
+                      <Ionicons name="trash-outline" size={13} color={colors.textMuted} />
                     ) : null}
                   </View>
                 </TouchableOpacity>
               );
             })}
+
+            {/* بطاقة إنشاء ثيم جديد */}
+            <TouchableOpacity
+              style={[styles.themeCard, styles.createCard]}
+              onPress={() => setShowCreate(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add-circle-outline" size={26} color={colors.primary} />
+              <Text style={[styles.themeName, { marginTop: 6 }]}>{t('createTheme')}</Text>
+            </TouchableOpacity>
           </View>
+          <Text style={styles.themeHint}>{t('themeLongPressHint')}</Text>
         </View>
 
         {/* عام */}
@@ -179,6 +227,93 @@ export default function SettingsScreen() {
         <Text style={styles.versionText}>{t('version')} 1.0.2</Text>
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      {/* نافذة إنشاء ثيم مخصّص */}
+      <Modal
+        visible={showCreate}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCreate(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t('createTheme')}</Text>
+
+            {/* معاينة حية للثيم قيد الإنشاء */}
+            <View style={styles.previewRow}>
+              {(() => {
+                const p = deriveColors(newColor, newDark);
+                return (
+                  <>
+                    <View style={[styles.previewSwatch, { backgroundColor: p.bg }]} />
+                    <View style={[styles.previewSwatch, { backgroundColor: p.surface }]} />
+                    <View style={[styles.previewSwatch, { backgroundColor: p.primary }]} />
+                    <View style={[styles.previewSwatch, { backgroundColor: p.accent }]} />
+                    <View style={[styles.previewSwatch, { backgroundColor: p.border }]} />
+                  </>
+                );
+              })()}
+            </View>
+
+            {/* اسم الثيم */}
+            <Text style={styles.fieldLabel}>{t('themeName')}</Text>
+            <TextInput
+              style={styles.input}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder={t('themeNamePlaceholder')}
+              placeholderTextColor={colors.textMuted}
+              textAlign={isRTL ? 'right' : 'left'}
+            />
+
+            {/* اللون الأساسي */}
+            <Text style={styles.fieldLabel}>{t('themeColor')}</Text>
+            <View style={styles.paletteWrap}>
+              {PALETTE.map((col) => (
+                <TouchableOpacity
+                  key={col}
+                  style={[
+                    styles.paletteDot,
+                    { backgroundColor: col },
+                    newColor === col && styles.paletteDotSel,
+                  ]}
+                  onPress={() => setNewColor(col)}
+                  activeOpacity={0.8}
+                />
+              ))}
+            </View>
+
+            {/* الوضع: داكن / فاتح */}
+            <Text style={styles.fieldLabel}>{t('themeMode')}</Text>
+            <View style={[styles.modeRow, { flexDirection: rowDir }]}>
+              <TouchableOpacity
+                style={[styles.modeBtn, newDark && styles.modeBtnSel]}
+                onPress={() => setNewDark(true)}
+              >
+                <Ionicons name="moon" size={15} color={newDark ? colors.onPrimary : colors.textMuted} />
+                <Text style={[styles.modeText, newDark && { color: colors.onPrimary }]}>{t('themeDark')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeBtn, !newDark && styles.modeBtnSel]}
+                onPress={() => setNewDark(false)}
+              >
+                <Ionicons name="sunny" size={15} color={!newDark ? colors.onPrimary : colors.textMuted} />
+                <Text style={[styles.modeText, !newDark && { color: colors.onPrimary }]}>{t('themeLight')}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* أزرار */}
+            <View style={[styles.modalActions, { flexDirection: rowDir }]}>
+              <TouchableOpacity style={styles.btnGhost} onPress={() => setShowCreate(false)}>
+                <Text style={styles.btnGhostText}>{t('cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.btnPrimary} onPress={createTheme}>
+                <Text style={styles.btnPrimaryText}>{t('themeCreate')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -213,7 +348,31 @@ const makeStyles = (c: ThemeColors) =>
     swatchRow: { flexDirection: 'row', gap: 4, marginBottom: 8 },
     swatch: { flex: 1, height: 22, borderRadius: 5 },
     themeNameRow: { alignItems: 'center', justifyContent: 'space-between' },
-    themeName: { color: c.text, fontSize: 12, fontWeight: '600' },
+    themeName: { color: c.text, fontSize: 12, fontWeight: '600', flex: 1 },
+    themeHint: { color: c.textMuted, fontSize: 10, textAlign: 'center', paddingBottom: 10, paddingHorizontal: 12 },
+
+    createCard: { alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed', borderColor: c.primary, backgroundColor: 'transparent' },
+
+    // نافذة إنشاء الثيم
+    modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 },
+    modalCard: { backgroundColor: c.surface, borderRadius: 18, padding: 20, borderWidth: 1, borderColor: c.border },
+    modalTitle: { color: c.text, fontSize: 17, fontWeight: '700', marginBottom: 14, textAlign: 'center' },
+    previewRow: { flexDirection: 'row', gap: 6, marginBottom: 16, justifyContent: 'center' },
+    previewSwatch: { width: 40, height: 40, borderRadius: 8, borderWidth: 1, borderColor: c.border },
+    fieldLabel: { color: c.textMuted, fontSize: 12, fontWeight: '600', marginBottom: 7, marginTop: 4 },
+    input: { backgroundColor: c.surfaceAlt, borderRadius: 10, borderWidth: 1, borderColor: c.border, color: c.text, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 6 },
+    paletteWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 6 },
+    paletteDot: { width: 34, height: 34, borderRadius: 17, borderWidth: 2, borderColor: 'transparent' },
+    paletteDotSel: { borderColor: c.text },
+    modeRow: { gap: 10, marginBottom: 18 },
+    modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 10, backgroundColor: c.surfaceAlt, borderWidth: 1, borderColor: c.border },
+    modeBtnSel: { backgroundColor: c.primary, borderColor: c.primary },
+    modeText: { color: c.textMuted, fontSize: 13, fontWeight: '600' },
+    modalActions: { gap: 10 },
+    btnGhost: { flex: 1, paddingVertical: 12, borderRadius: 11, alignItems: 'center', backgroundColor: c.surfaceAlt },
+    btnGhostText: { color: c.text, fontSize: 14, fontWeight: '600' },
+    btnPrimary: { flex: 1, paddingVertical: 12, borderRadius: 11, alignItems: 'center', backgroundColor: c.primary },
+    btnPrimaryText: { color: c.onPrimary, fontSize: 14, fontWeight: '700' },
 
     versionText: { color: c.textMuted, fontSize: 11, textAlign: 'center' },
   });

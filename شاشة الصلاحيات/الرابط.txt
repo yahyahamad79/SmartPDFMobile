@@ -1,0 +1,3 @@
+https://smartpdf-trial-server.onrender.com/admin
+
+https://smartpdf-trial-server.onrender.com/trial/list?token=yahyahamad

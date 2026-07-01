@@ -165,12 +165,17 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
 
     const now = Date.now();
 
-    // ---- الطبقة المحلية: تاريخ البدء + كشف العبث (تعمل دائماً) ----
+    // ---- الطبقة المحلية: احتياطية فقط (عند انقطاع النت) ----
     const local = await computeLocalStart();
     let effectiveStart = local.startMs;
     let isTampered = local.tampered;
 
-    // ---- مزامنة الخادم: تصحيح تاريخ البدء فقط (لا المدة) ----
+    // القيم النهائية — الأولوية للخادم
+    let left: number;
+    let active: boolean;
+    let gotServer = false;
+
+    // ---- الخادم مصدر الحقيقة: يقرّر المدة والأيام المتبقية ----
     try {
       const deviceId = await getDeviceId();
       const controller = new AbortController();
@@ -187,29 +192,42 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) throw new Error(`Server ${res.status}`);
       const data = await res.json();
 
-      // نأخذ تاريخ بدء الخادم ونستخدم الأقدم (يمنع إعادة التثبيت)
-      const serverStartMs = parseServerStart(data);
-      if (serverStartMs && serverStartMs > 0 && serverStartMs < effectiveStart) {
-        effectiveStart = serverStartMs;
-        await secureSet(K_START, String(effectiveStart));
+      // الخادم يرسل daysLeft/days_remaining + expired — نطيعه مباشرة
+      const serverDays =
+        typeof data.daysLeft === 'number' ? data.daysLeft
+        : typeof data.days_remaining === 'number' ? data.days_remaining
+        : null;
+
+      if (serverDays !== null) {
+        left = serverDays;
+        active = !data.expired && serverDays > 0;
+        gotServer = true;
+
+        // نحفظ تاريخ بدء الخادم محلياً (للاحتياطي عند انقطاع النت لاحقاً)
+        const serverStartMs = parseServerStart(data);
+        if (serverStartMs && serverStartMs > 0) {
+          effectiveStart = serverStartMs;
+          await secureSet(K_START, String(effectiveStart));
+        }
       }
     } catch {
-      // لا إنترنت / الخادم نائم => نكمل بالحساب المحلي (التجربة بدأت أصلاً)
       setOffline(true);
     }
 
-    // ---- القرار النهائي (المدة ثابتة 3 أيام) ----
-    let left = daysLeftFrom(effectiveStart, now);
-    let active = left > 0;
+    // ---- احتياطي: إن لم يرد الخادم، نستخدم الحساب المحلي ----
+    if (!gotServer) {
+      left = daysLeftFrom(effectiveStart, now);
+      active = left > 0;
+    }
 
-    // عبث بالساعة => إنهاء فوري
+    // عبث بالساعة => إنهاء فوري (يطبّق في كل الأحوال)
     if (isTampered) {
       active = false;
       left = 0;
     }
 
-    setDaysLeft(left);
-    setIsTrialActive(active);
+    setDaysLeft(left!);
+    setIsTrialActive(active!);
     setTampered(isTampered);
     setChecked(true);
     setLoading(false);
@@ -240,15 +258,12 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
 // يستخرج تاريخ بدء التجربة من رد الخادم بمرونة
 function parseServerStart(data: any): number | null {
   try {
-    if (data.firstSeen) {
-      if (typeof data.firstSeen === 'number') return data.firstSeen;
-      const t = Date.parse(data.firstSeen);
+    // الخادم يرسل firstSeen و started_at (ISO). نقبل الاثنين.
+    const iso = data.firstSeen || data.started_at;
+    if (iso) {
+      if (typeof iso === 'number') return iso;
+      const t = Date.parse(iso);
       if (!isNaN(t)) return t;
-    }
-    // احتياطي: إن أرسل الخادم daysLeft فقط، نستنتج البداية
-    if (typeof data.daysLeft === 'number') {
-      const elapsed = TRIAL_DAYS - data.daysLeft;
-      if (elapsed >= 0) return Date.now() - elapsed * DAY_MS;
     }
   } catch {}
   return null;
