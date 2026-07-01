@@ -2,7 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { readPdfBytes } from '@/lib/pdfBytes';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
+import { useTheme, ThemeColors } from '@/lib/theme';
 import { saveToArchive } from '@/lib/archive';
 import PdfPagePreview, { clearPreviewSession, getServerPageCount, isPdfPreviewAvailable } from '@/components/PdfPagePreview';
 
@@ -37,6 +38,8 @@ type PickedFile = {
 export default function RotatePdfScreen() {
   const router = useRouter();
   const { t, isRTL } = useLang();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [file, setFile] = useState<PickedFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [outputName, setOutputName] = useState('rotated');
@@ -168,7 +171,7 @@ export default function RotatePdfScreen() {
         </View>
 
         <TouchableOpacity style={styles.pickBtn} onPress={pickFile} disabled={busy}>
-          <Ionicons name="folder-open-outline" size={26} color="#60a5fa" style={{ marginBottom: 6 }} />
+          <Ionicons name="folder-open-outline" size={26} color={colors.primary} style={{ marginBottom: 6 }} />
           <Text style={styles.pickText}>{file ? t('pickPdfDiff') : t('pickPdf')}</Text>
         </TouchableOpacity>
 
@@ -177,7 +180,7 @@ export default function RotatePdfScreen() {
             <View style={styles.fileCard}>
               <View style={[styles.fileRow, { flexDirection: rowDir }]}>
                 <TouchableOpacity onPress={clearFile} disabled={busy}>
-                  <Ionicons name="close" size={15} color="#f87171" />
+                  <Ionicons name="close" size={15} color={colors.danger} />
                 </TouchableOpacity>
                 <Text style={styles.fileSize}>{formatSize(file.size)} · {file.pageCount} {t('pages')}</Text>
                 <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
@@ -187,11 +190,11 @@ export default function RotatePdfScreen() {
             {/* أزرار عامة */}
             <View style={[styles.bulkRow, { flexDirection: rowDir }]}>
               <TouchableOpacity style={styles.bulkBtn} onPress={rotateAll} disabled={busy}>
-                <Ionicons name="refresh-outline" size={16} color="#cbd5e1" />
+                <Ionicons name="refresh-outline" size={16} color={colors.textMuted} />
                 <Text style={styles.bulkText}>{t('rotateAll')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.bulkBtn} onPress={resetRotations} disabled={busy}>
-                <Ionicons name="arrow-undo-outline" size={16} color="#cbd5e1" />
+                <Ionicons name="arrow-undo-outline" size={16} color={colors.textMuted} />
                 <Text style={styles.bulkText}>{t('rotateReset')}</Text>
               </TouchableOpacity>
             </View>
@@ -214,7 +217,7 @@ export default function RotatePdfScreen() {
                       onPress={() => setPreviewPage(page)}
                     >
                       <View style={[styles.pageIconWrap, { transform: [{ rotate: `${angle}deg` }] }]}>
-                        <Ionicons name="document-outline" size={30} color={rotated ? '#60a5fa' : '#64748b'} />
+                        <Ionicons name="document-outline" size={30} color={rotated ? colors.primary : colors.textMuted} />
                       </View>
                       <View style={styles.pageNumBadge}>
                         <Text style={styles.pageNumText}>{page}</Text>
@@ -242,7 +245,7 @@ export default function RotatePdfScreen() {
                   value={outputName}
                   onChangeText={setOutputName}
                   placeholder="rotated"
-                  placeholderTextColor="#64748b"
+                  placeholderTextColor={colors.textMuted}
                   editable={!busy}
                   autoCapitalize="none"
                 />
@@ -304,59 +307,58 @@ export default function RotatePdfScreen() {
   );
 }
 
-const NAVY = '#1F4E78';
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0f172a' },
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   scroll: { padding: 16 },
   header: { paddingVertical: 12 },
   backBtn: { marginBottom: 8 },
-  backText: { color: '#60a5fa', fontSize: 16, fontWeight: '700' },
-  title: { fontSize: 24, fontWeight: '800', color: '#ffffff' },
+  backText: { color: c.primary, fontSize: 16, fontWeight: '700' },
+  title: { fontSize: 24, fontWeight: '800', color: c.surface },
 
-  pickBtn: { borderWidth: 2, borderColor: NAVY, borderStyle: 'dashed', borderRadius: 14, paddingVertical: 24, alignItems: 'center', backgroundColor: '#16233a', marginTop: 8, marginBottom: 16 },
-  pickText: { color: '#cbd5e1', fontWeight: '700', fontSize: 14 },
+  pickBtn: { borderWidth: 2, borderColor: c.primary, borderStyle: 'dashed', borderRadius: 14, paddingVertical: 24, alignItems: 'center', backgroundColor: c.surface, marginTop: 8, marginBottom: 16 },
+  pickText: { color: c.textMuted, fontWeight: '700', fontSize: 14 },
 
-  fileCard: { backgroundColor: '#1e293b', borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#293548' },
+  fileCard: { backgroundColor: c.surface, borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: c.surfaceAlt },
   fileRow: { alignItems: 'center', gap: 10 },
-  fileSize: { color: '#64748b', fontSize: 11, fontWeight: '700' },
-  fileName: { flex: 1, color: '#e2e8f0', fontSize: 13, fontWeight: '600', textAlign: 'right' },
+  fileSize: { color: c.textMuted, fontSize: 11, fontWeight: '700' },
+  fileName: { flex: 1, color: c.text, fontSize: 13, fontWeight: '600', textAlign: 'right' },
 
   bulkRow: { gap: 10, marginBottom: 12 },
-  bulkBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#1e293b', borderRadius: 10, paddingVertical: 11, borderWidth: 0.5, borderColor: '#2d3a4f' },
-  bulkText: { color: '#cbd5e1', fontSize: 13, fontWeight: '600' },
+  bulkBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: c.surface, borderRadius: 10, paddingVertical: 11, borderWidth: 0.5, borderColor: c.surfaceAlt },
+  bulkText: { color: c.textMuted, fontSize: 13, fontWeight: '600' },
 
-  hint: { color: '#64748b', fontSize: 12, marginBottom: 12, paddingHorizontal: 2 },
+  hint: { color: c.textMuted, fontSize: 12, marginBottom: 12, paddingHorizontal: 2 },
 
   pagesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
-  pageCard: { width: '31%', backgroundColor: '#1e293b', borderRadius: 12, padding: 8, borderWidth: 0.5, borderColor: '#2d3a4f', alignItems: 'center' },
-  pageCardActive: { borderColor: '#60a5fa', borderWidth: 1 },
-  pageThumb: { width: '100%', aspectRatio: 0.85, backgroundColor: '#0b1220', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8, position: 'relative' },
+  pageCard: { width: '31%', backgroundColor: c.surface, borderRadius: 12, padding: 8, borderWidth: 0.5, borderColor: c.surfaceAlt, alignItems: 'center' },
+  pageCardActive: { borderColor: c.primary, borderWidth: 1 },
+  pageThumb: { width: '100%', aspectRatio: 0.85, backgroundColor: c.bg, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8, position: 'relative' },
   pageIconWrap: { alignItems: 'center', justifyContent: 'center' },
   pageNumBadge: { position: 'absolute', top: 4, left: 4, backgroundColor: '#0008', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
-  pageNumText: { color: '#cbd5e1', fontSize: 10, fontWeight: '700' },
-  angleBadge: { position: 'absolute', bottom: 4, right: 4, backgroundColor: '#1d4ed8', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
+  pageNumText: { color: c.textMuted, fontSize: 10, fontWeight: '700' },
+  angleBadge: { position: 'absolute', bottom: 4, right: 4, backgroundColor: c.primary, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
   angleText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  rotateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#283548', borderRadius: 8, paddingVertical: 7, width: '100%' },
+  rotateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: c.surfaceAlt, borderRadius: 8, paddingVertical: 7, width: '100%' },
   rotateBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
 
-  optionsBox: { backgroundColor: '#1e293b', borderRadius: 14, padding: 14, marginTop: 8, marginBottom: 16, borderWidth: 1, borderColor: '#293548' },
-  optLabel: { color: '#e2e8f0', fontWeight: '800', fontSize: 13, marginBottom: 8 },
+  optionsBox: { backgroundColor: c.surface, borderRadius: 14, padding: 14, marginTop: 8, marginBottom: 16, borderWidth: 1, borderColor: c.surfaceAlt },
+  optLabel: { color: c.text, fontWeight: '800', fontSize: 13, marginBottom: 8 },
   nameRow: { alignItems: 'center', gap: 8 },
-  input: { flex: 1, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, color: '#fff', fontSize: 15, fontWeight: '700' },
-  ext: { color: '#94a3b8', fontSize: 14, fontWeight: '700' },
+  input: { flex: 1, backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, color: '#fff', fontSize: 15, fontWeight: '700' },
+  ext: { color: c.textMuted, fontSize: 14, fontWeight: '700' },
 
-  actionBtn: { backgroundColor: NAVY, borderRadius: 12, paddingVertical: 15, alignItems: 'center' },
+  actionBtn: { backgroundColor: c.primary, borderRadius: 12, paddingVertical: 15, alignItems: 'center' },
   actionBtnDisabled: { opacity: 0.5 },
   actionInner: { alignItems: 'center', gap: 8 },
   actionText: { color: '#fff', fontWeight: '800', fontSize: 15 },
 
-  previewOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0b1220' },
+  previewOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: c.bg },
   previewHeader: { alignItems: 'center', gap: 12, paddingTop: 44, paddingHorizontal: 16, paddingBottom: 12 },
   previewCloseBtn: { padding: 4 },
   previewTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  previewBody: { flex: 1, margin: 12, backgroundColor: '#0b1220' },
+  previewBody: { flex: 1, margin: 12, backgroundColor: c.bg },
   previewControls: { justifyContent: 'center', paddingBottom: 32, paddingTop: 8 },
-  previewRotate: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#1d4ed8', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 28 },
+  previewRotate: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.primary, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 28 },
   previewRotateText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 });

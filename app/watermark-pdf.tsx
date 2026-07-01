@@ -7,7 +7,7 @@
 //  • يستخدم useLang() و saveToArchive(base64, name, kind) مثل بقية الشاشات
 // ─────────────────────────────────────────────────────────────
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, Alert,
@@ -21,6 +21,7 @@ import { toByteArray, fromByteArray } from 'base64-js';
 import { Stamp, FileText, ChevronLeft, Check } from 'lucide-react-native';
 
 import { useLang } from '@/lib/i18n';
+import { useTheme, ThemeColors } from '@/lib/theme';
 import { saveToArchive } from '@/lib/archive';
 import { AMIRI_FONT_BASE64 } from '@/lib/amiriFont';
 import { shapeForPdf, hasArabic } from '@/lib/arabicText';
@@ -35,6 +36,8 @@ const yieldToUI = () => new Promise((r) => setTimeout(r, 0));
 export default function WatermarkScreen() {
   const router = useRouter();
   const { t, isRTL } = useLang();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileUri, setFileUri] = useState<string | null>(null);
@@ -131,16 +134,16 @@ export default function WatermarkScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ChevronLeft size={24} color="#5B2C9E" />
+          <ChevronLeft size={24} color={colors.primaryDark} />
         </TouchableOpacity>
         <View style={styles.titleRow}>
-          <Stamp size={22} color="#7C3AED" />
+          <Stamp size={22} color={colors.primary} />
           <Text style={styles.title}>{t('wmTitle')}</Text>
         </View>
       </View>
 
       <TouchableOpacity style={styles.fileBox} onPress={pickFile}>
-        <FileText size={20} color="#7C3AED" />
+        <FileText size={20} color={colors.primary} />
         <Text style={styles.fileText} numberOfLines={1}>
           {fileName || t('pickPdf')}
         </Text>
@@ -150,7 +153,7 @@ export default function WatermarkScreen() {
       <TextInput
         style={styles.input}
         placeholder={t('wmTextPlaceholder')}
-        placeholderTextColor="#A99CC9"
+        placeholderTextColor={colors.textMuted}
         value={wmText}
         onChangeText={setWmText}
         textAlign={isAr ? 'right' : 'left'}
@@ -207,42 +210,42 @@ export default function WatermarkScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F4F2FA' },
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: c.bg },
   content: { padding: 16, paddingBottom: 40 },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   backBtn: { padding: 4, marginEnd: 8 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { fontSize: 20, fontWeight: '700', color: '#3D2A66' },
+  title: { fontSize: 20, fontWeight: '700', color: c.text },
   fileBox: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: '#fff', borderRadius: 14, padding: 16,
-    borderWidth: 1, borderColor: '#ECE7F5', marginBottom: 20,
+    borderWidth: 1, borderColor: c.surfaceAlt, marginBottom: 20,
   },
-  fileText: { flex: 1, color: '#5B2C9E', fontSize: 14 },
-  label: { fontSize: 13, fontWeight: '600', color: '#6B5B95', marginBottom: 8, textAlign: 'right' },
+  fileText: { flex: 1, color: c.primaryDark, fontSize: 14 },
+  label: { fontSize: 13, fontWeight: '600', color: c.textMuted, marginBottom: 8, textAlign: 'right' },
   input: {
     backgroundColor: '#fff', borderRadius: 12, padding: 14, fontSize: 15,
-    color: '#3D2A66', borderWidth: 1, borderColor: '#ECE7F5', marginBottom: 20,
+    color: c.text, borderWidth: 1, borderColor: c.surfaceAlt, marginBottom: 20,
   },
   opacityRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   opacityBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 12, borderRadius: 12, backgroundColor: '#fff',
-    borderWidth: 1, borderColor: '#ECE7F5',
+    borderWidth: 1, borderColor: c.surfaceAlt,
   },
-  opacityBtnActive: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
-  opacityText: { fontSize: 14, color: '#6B5B95', fontWeight: '500' },
+  opacityBtnActive: { backgroundColor: c.primary, borderColor: c.primary },
+  opacityText: { fontSize: 14, color: c.textMuted, fontWeight: '500' },
   opacityTextActive: { color: '#fff' },
-  noteBox: { backgroundColor: '#EEE8FB', borderRadius: 12, padding: 12, marginBottom: 20 },
-  noteText: { color: '#5B2C9E', fontSize: 12, lineHeight: 18, textAlign: 'right' },
-  runBtn: { backgroundColor: '#7C3AED', borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
-  runBtnDisabled: { backgroundColor: '#C8BBE8' },
+  noteBox: { backgroundColor: c.surfaceAlt, borderRadius: 12, padding: 12, marginBottom: 20 },
+  noteText: { color: c.primaryDark, fontSize: 12, lineHeight: 18, textAlign: 'right' },
+  runBtn: { backgroundColor: c.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
+  runBtnDisabled: { backgroundColor: c.border },
   busyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   runText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   progressTrack: {
-    height: 6, backgroundColor: '#E5DEF5', borderRadius: 3,
+    height: 6, backgroundColor: c.surfaceAlt, borderRadius: 3,
     marginTop: 12, overflow: 'hidden',
   },
-  progressFill: { height: 6, backgroundColor: '#7C3AED', borderRadius: 3 },
+  progressFill: { height: 6, backgroundColor: c.primary, borderRadius: 3 },
 });

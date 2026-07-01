@@ -7,7 +7,7 @@
 //  • يستخدم useLang() و saveToArchive(base64, name, kind) مثل بقية الشاشات
 // ─────────────────────────────────────────────────────────────
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, Alert,
@@ -17,6 +17,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Archive, FileText, ChevronLeft, Check, Wifi } from 'lucide-react-native';
 
 import { useLang } from '@/lib/i18n';
+import { useTheme, ThemeColors } from '@/lib/theme';
 import { saveToArchive } from '@/lib/archive';
 import { SERVER_URL as SERVER } from '@/lib/config';
 
@@ -38,6 +39,8 @@ async function fetchWithTimeout(url: string, opts: any, ms: number) {
 export default function CompressScreen() {
   const router = useRouter();
   const { t, isRTL } = useLang();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileUri, setFileUri] = useState<string | null>(null);
@@ -165,21 +168,21 @@ export default function CompressScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ChevronLeft size={24} color="#5B2C9E" />
+          <ChevronLeft size={24} color={colors.primaryDark} />
         </TouchableOpacity>
         <View style={styles.titleRow}>
-          <Archive size={22} color="#7C3AED" />
+          <Archive size={22} color={colors.primary} />
           <Text style={styles.title}>{t('compressTitle')}</Text>
         </View>
       </View>
 
       <View style={styles.onlineBox}>
-        <Wifi size={16} color="#5B2C9E" />
+        <Wifi size={16} color={colors.primaryDark} />
         <Text style={styles.onlineText}>{t('compressOnlineNote')}</Text>
       </View>
 
       <TouchableOpacity style={styles.fileBox} onPress={pickFile}>
-        <FileText size={20} color="#7C3AED" />
+        <FileText size={20} color={colors.primary} />
         <View style={{ flex: 1 }}>
           <Text style={styles.fileText} numberOfLines={1}>
             {fileName || t('pickPdf')}
@@ -229,38 +232,38 @@ export default function CompressScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F4F2FA' },
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: c.bg },
   content: { padding: 16, paddingBottom: 40 },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   backBtn: { padding: 4, marginEnd: 8 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { fontSize: 20, fontWeight: '700', color: '#3D2A66' },
+  title: { fontSize: 20, fontWeight: '700', color: c.text },
   onlineBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#EEE8FB', borderRadius: 12, padding: 12, marginBottom: 16,
+    backgroundColor: c.surfaceAlt, borderRadius: 12, padding: 12, marginBottom: 16,
   },
-  onlineText: { color: '#5B2C9E', fontSize: 12, flex: 1, lineHeight: 18, textAlign: 'right' },
+  onlineText: { color: c.primaryDark, fontSize: 12, flex: 1, lineHeight: 18, textAlign: 'right' },
   fileBox: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: '#fff', borderRadius: 14, padding: 16,
-    borderWidth: 1, borderColor: '#ECE7F5', marginBottom: 20,
+    borderWidth: 1, borderColor: c.surfaceAlt, marginBottom: 20,
   },
-  fileText: { color: '#5B2C9E', fontSize: 14 },
-  fileSize: { color: '#A99CC9', fontSize: 12, marginTop: 2 },
-  label: { fontSize: 13, fontWeight: '600', color: '#6B5B95', marginBottom: 8, textAlign: 'right' },
+  fileText: { color: c.primaryDark, fontSize: 14 },
+  fileSize: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+  label: { fontSize: 13, fontWeight: '600', color: c.textMuted, marginBottom: 8, textAlign: 'right' },
   levelRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   levelBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 12, borderRadius: 12, backgroundColor: '#fff',
-    borderWidth: 1, borderColor: '#ECE7F5',
+    borderWidth: 1, borderColor: c.surfaceAlt,
   },
-  levelBtnActive: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
-  levelText: { fontSize: 14, color: '#6B5B95', fontWeight: '500' },
+  levelBtnActive: { backgroundColor: c.primary, borderColor: c.primary },
+  levelText: { fontSize: 14, color: c.textMuted, fontWeight: '500' },
   levelTextActive: { color: '#fff' },
-  runBtn: { backgroundColor: '#7C3AED', borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
-  runBtnDisabled: { backgroundColor: '#C8BBE8' },
+  runBtn: { backgroundColor: c.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
+  runBtnDisabled: { backgroundColor: c.border },
   busyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   runText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  hint: { color: '#A99CC9', fontSize: 11, marginTop: 12, textAlign: 'center', lineHeight: 16 },
+  hint: { color: c.textMuted, fontSize: 11, marginTop: 12, textAlign: 'center', lineHeight: 16 },
 });

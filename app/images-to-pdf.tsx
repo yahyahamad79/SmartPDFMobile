@@ -4,7 +4,7 @@ import { applyRotationAndFilter, cropImage, getImageSize, Filter as ImgFilter } 
 import { useRouter } from 'expo-router';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { readFileBytes } from '@/lib/pdfBytes';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +23,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
+import { useTheme, ThemeColors } from '@/lib/theme';
 import { saveToArchive } from '@/lib/archive';
 
 /**
@@ -45,6 +46,8 @@ type PickedImage = {
 export default function ImagesToPdfScreen() {
   const router = useRouter();
   const { t, isRTL } = useLang();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [images, setImages] = useState<PickedImage[]>([]);
   const [busy, setBusy] = useState(false);
   const [outputName, setOutputName] = useState('images');
@@ -422,11 +425,11 @@ export default function ImagesToPdfScreen() {
 
         <View style={[styles.pickRow, { flexDirection: rowDir }]}>
           <TouchableOpacity style={[styles.pickBtn, styles.pickHalf]} onPress={pickFromGallery} disabled={busy}>
-            <Ionicons name="images-outline" size={22} color="#60a5fa" />
+            <Ionicons name="images-outline" size={22} color={colors.primary} />
             <Text style={styles.pickText}>{t('imgGallery')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.pickBtn, styles.pickHalf]} onPress={pickFromFiles} disabled={busy}>
-            <Ionicons name="folder-open-outline" size={22} color="#60a5fa" />
+            <Ionicons name="folder-open-outline" size={22} color={colors.primary} />
             <Text style={styles.pickText}>{t('imgFiles')}</Text>
           </TouchableOpacity>
         </View>
@@ -460,16 +463,16 @@ export default function ImagesToPdfScreen() {
                     {/* أزرار التدوير والترتيب */}
                     <View style={[styles.actionsRow, { flexDirection: rowDir }]}>
                       <TouchableOpacity style={styles.miniBtn} onPress={() => rotateImage(i)} disabled={busy}>
-                        <Ionicons name="refresh-outline" size={16} color="#cbd5e1" />
+                        <Ionicons name="refresh-outline" size={16} color={colors.textMuted} />
                       </TouchableOpacity>
                       <TouchableOpacity style={styles.miniBtn} onPress={() => move(i, -1)} disabled={busy || i === 0}>
-                        <Ionicons name="arrow-up" size={16} color={i === 0 ? '#475569' : '#cbd5e1'} />
+                        <Ionicons name="arrow-up" size={16} color={i === 0 ? colors.border : colors.textMuted} />
                       </TouchableOpacity>
                       <TouchableOpacity style={styles.miniBtn} onPress={() => move(i, 1)} disabled={busy || i === images.length - 1}>
-                        <Ionicons name="arrow-down" size={16} color={i === images.length - 1 ? '#475569' : '#cbd5e1'} />
+                        <Ionicons name="arrow-down" size={16} color={i === images.length - 1 ? colors.border : colors.textMuted} />
                       </TouchableOpacity>
                       <TouchableOpacity style={[styles.miniBtn, styles.delBtn]} onPress={() => removeImage(i)} disabled={busy}>
-                        <Ionicons name="trash-outline" size={16} color="#f87171" />
+                        <Ionicons name="trash-outline" size={16} color={colors.danger} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -486,7 +489,7 @@ export default function ImagesToPdfScreen() {
                         onPress={() => setFilter(i, f.key)}
                         disabled={busy}
                       >
-                        <Ionicons name={f.icon} size={13} color={active ? '#0c1424' : '#94a3b8'} />
+                        <Ionicons name={f.icon} size={13} color={active ? colors.bg : colors.textMuted} />
                         <Text style={[styles.filterText, active && styles.filterTextActive]}>{t(f.labelKey)}</Text>
                       </TouchableOpacity>
                     );
@@ -504,7 +507,7 @@ export default function ImagesToPdfScreen() {
                   value={outputName}
                   onChangeText={setOutputName}
                   placeholder="images"
-                  placeholderTextColor="#64748b"
+                  placeholderTextColor={colors.textMuted}
                   editable={!busy}
                   autoCapitalize="none"
                 />
@@ -515,8 +518,8 @@ export default function ImagesToPdfScreen() {
                 <Switch
                   value={addNumbers}
                   onValueChange={setAddNumbers}
-                  trackColor={{ false: '#334155', true: '#1d4ed8' }}
-                  thumbColor={addNumbers ? '#60a5fa' : '#94a3b8'}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor={addNumbers ? colors.primary : colors.textMuted}
                   disabled={busy}
                 />
                 <Text style={[styles.switchLabel, { textAlign: txtAlign }]}>{t('imgAddNums')}</Text>
@@ -566,7 +569,7 @@ export default function ImagesToPdfScreen() {
                   const active = images[preview].filter === f.key;
                   return (
                     <TouchableOpacity key={f.key} style={[styles.previewChip, active && styles.filterChipActive]} onPress={() => setFilter(preview, f.key)}>
-                      <Ionicons name={f.icon} size={15} color={active ? '#0c1424' : '#fff'} />
+                      <Ionicons name={f.icon} size={15} color={active ? colors.bg : colors.surface} />
                     </TouchableOpacity>
                   );
                 })}
@@ -598,7 +601,7 @@ export default function ImagesToPdfScreen() {
                 <View {...cornerBR.panHandlers} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} style={[styles.handle, { left: cropRect.x + cropRect.w - 16, top: cropRect.y + cropRect.h - 16 }]} />
               </View>
               <View style={styles.previewBar}>
-                <TouchableOpacity style={[styles.previewBtn, { backgroundColor: '#1d4ed8' }]} onPress={applyCrop} disabled={busy}>
+                <TouchableOpacity style={[styles.previewBtn, { backgroundColor: colors.primary }]} onPress={applyCrop} disabled={busy}>
                   {busy ? <ActivityIndicator color="#fff" size="small" /> : (
                     <>
                       <Ionicons name="checkmark" size={20} color="#fff" />
@@ -619,53 +622,52 @@ export default function ImagesToPdfScreen() {
   );
 }
 
-const NAVY = '#1F4E78';
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0f172a' },
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   scroll: { padding: 16 },
   header: { paddingVertical: 12 },
   backBtn: { marginBottom: 8 },
-  backText: { color: '#60a5fa', fontSize: 16, fontWeight: '700' },
-  title: { fontSize: 24, fontWeight: '800', color: '#ffffff' },
+  backText: { color: c.primary, fontSize: 16, fontWeight: '700' },
+  title: { fontSize: 24, fontWeight: '800', color: c.surface },
 
   pickRow: { gap: 12, marginTop: 8, marginBottom: 16 },
   pickBtn: {
-    borderWidth: 2, borderColor: NAVY, borderStyle: 'dashed', borderRadius: 14,
-    paddingVertical: 20, alignItems: 'center', backgroundColor: '#16233a', gap: 6,
+    borderWidth: 2, borderColor: c.primary, borderStyle: 'dashed', borderRadius: 14,
+    paddingVertical: 20, alignItems: 'center', backgroundColor: c.surface, gap: 6,
   },
   pickHalf: { flex: 1 },
-  pickText: { color: '#cbd5e1', fontWeight: '700', fontSize: 13 },
+  pickText: { color: c.textMuted, fontWeight: '700', fontSize: 13 },
 
   listHead: { alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingHorizontal: 2 },
-  listTitle: { color: '#e2e8f0', fontWeight: '700', fontSize: 14 },
-  clearText: { color: '#f87171', fontSize: 12, fontWeight: '600' },
+  listTitle: { color: c.text, fontWeight: '700', fontSize: 14 },
+  clearText: { color: c.danger, fontSize: 12, fontWeight: '600' },
 
-  card: { backgroundColor: '#1e293b', borderRadius: 14, padding: 12, marginBottom: 10, borderWidth: 0.5, borderColor: '#2d3a4f' },
+  card: { backgroundColor: c.surface, borderRadius: 14, padding: 12, marginBottom: 10, borderWidth: 0.5, borderColor: c.surfaceAlt },
   cardRow: { alignItems: 'center', gap: 12 },
-  thumb: { width: 66, height: 66, borderRadius: 8, backgroundColor: '#0f172a' },
+  thumb: { width: 66, height: 66, borderRadius: 8, backgroundColor: c.bg },
   zoomBadge: { position: 'absolute', right: 3, bottom: 3, backgroundColor: '#000a', borderRadius: 6, padding: 2 },
-  imgName: { color: '#e2e8f0', fontSize: 12, fontWeight: '600', marginBottom: 8 },
+  imgName: { color: c.text, fontSize: 12, fontWeight: '600', marginBottom: 8 },
 
   actionsRow: { gap: 8 },
-  miniBtn: { width: 34, height: 34, borderRadius: 8, backgroundColor: '#283548', alignItems: 'center', justifyContent: 'center' },
-  delBtn: { backgroundColor: '#3a1a1a' },
+  miniBtn: { width: 34, height: 34, borderRadius: 8, backgroundColor: c.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
+  delBtn: { backgroundColor: c.danger },
 
   filterRow: { gap: 6, marginTop: 10, justifyContent: 'flex-start' },
-  filterChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#0f172a', borderWidth: 0.5, borderColor: '#334155', borderRadius: 16, paddingHorizontal: 9, paddingVertical: 5 },
-  filterChipActive: { backgroundColor: '#60a5fa', borderColor: '#60a5fa' },
-  filterText: { color: '#94a3b8', fontSize: 10, fontWeight: '600' },
-  filterTextActive: { color: '#0c1424' },
+  filterChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.bg, borderWidth: 0.5, borderColor: c.border, borderRadius: 16, paddingHorizontal: 9, paddingVertical: 5 },
+  filterChipActive: { backgroundColor: c.primary, borderColor: c.primary },
+  filterText: { color: c.textMuted, fontSize: 10, fontWeight: '600' },
+  filterTextActive: { color: c.bg },
 
-  optionsBox: { backgroundColor: '#1e293b', borderRadius: 14, padding: 14, marginTop: 6, marginBottom: 16, borderWidth: 0.5, borderColor: '#2d3a4f' },
-  optLabel: { color: '#e2e8f0', fontWeight: '700', fontSize: 13, marginBottom: 8 },
+  optionsBox: { backgroundColor: c.surface, borderRadius: 14, padding: 14, marginTop: 6, marginBottom: 16, borderWidth: 0.5, borderColor: c.surfaceAlt },
+  optLabel: { color: c.text, fontWeight: '700', fontSize: 13, marginBottom: 8 },
   nameRow: { alignItems: 'center', gap: 8 },
-  input: { flex: 1, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, color: '#fff', fontSize: 15, fontWeight: '600' },
-  ext: { color: '#94a3b8', fontSize: 14, fontWeight: '700' },
+  input: { flex: 1, backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, color: '#fff', fontSize: 15, fontWeight: '600' },
+  ext: { color: c.textMuted, fontSize: 14, fontWeight: '700' },
   switchRow: { alignItems: 'center', gap: 10, marginTop: 14 },
-  switchLabel: { color: '#cbd5e1', fontSize: 13, flex: 1 },
+  switchLabel: { color: c.textMuted, fontSize: 13, flex: 1 },
 
-  actionBtn: { backgroundColor: NAVY, borderRadius: 12, paddingVertical: 15, alignItems: 'center' },
+  actionBtn: { backgroundColor: c.primary, borderRadius: 12, paddingVertical: 15, alignItems: 'center' },
   actionBtnDisabled: { opacity: 0.5 },
   actionInner: { alignItems: 'center', gap: 8 },
   actionText: { color: '#fff', fontWeight: '800', fontSize: 15 },
@@ -674,12 +676,12 @@ const styles = StyleSheet.create({
   modalClose: { position: 'absolute', top: 44, right: 20, zIndex: 2, padding: 6 },
   previewImg: { width: '90%', height: '70%' },
   previewBar: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 20, flexWrap: 'wrap', justifyContent: 'center', paddingHorizontal: 16 },
-  previewBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1e293b', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  previewBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.surface, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
   previewBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  previewChip: { width: 42, height: 42, borderRadius: 10, backgroundColor: '#1e293b', alignItems: 'center', justifyContent: 'center' },
+  previewChip: { width: 42, height: 42, borderRadius: 10, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' },
 
   cropArea: { position: 'relative', backgroundColor: '#000', overflow: 'hidden' },
   shade: { position: 'absolute', backgroundColor: 'rgba(0,0,0,0.55)' },
-  cropFrame: { position: 'absolute', borderWidth: 2, borderColor: '#60a5fa' },
-  handle: { position: 'absolute', width: 32, height: 32, borderRadius: 16, backgroundColor: '#60a5fa', borderWidth: 2, borderColor: '#fff' },
+  cropFrame: { position: 'absolute', borderWidth: 2, borderColor: c.primary },
+  handle: { position: 'absolute', width: 32, height: 32, borderRadius: 16, backgroundColor: c.primary, borderWidth: 2, borderColor: '#fff' },
 });

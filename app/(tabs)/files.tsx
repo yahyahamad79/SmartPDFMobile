@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +14,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
+import { useTheme, ThemeColors } from '@/lib/theme';
 import {
   ArchiveFile,
   ToolKind,
@@ -32,7 +33,7 @@ const KIND_LABEL: Record<ToolKind, { key: string; tint: string; bg: string }> = 
   delete:  { key: 'toolDelete',  tint: '#a78bfa', bg: '#312e5f' },
   img2pdf: { key: 'toolImg2Pdf', tint: '#34d399', bg: '#14463a' },
   protect: { key: 'toolProtect', tint: '#fbbf24', bg: '#4a3a0c' },
-  other:   { key: 'appName',     tint: '#60a5fa', bg: '#1d3a5f' },
+  other:   { key: 'appName',     tint: '#7C3AED', bg: '#1d3a5f' },
 };
 
 function fmtSize(bytes: number) {
@@ -45,6 +46,8 @@ function fmtSize(bytes: number) {
 export default function FilesScreen() {
   const router = useRouter();
   const { t, isRTL } = useLang();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [files, setFiles] = useState<ArchiveFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -91,14 +94,14 @@ export default function FilesScreen() {
     return (
       <View key={file.name} style={styles.card}>
         <View style={[styles.cardTop, { flexDirection: rowDir }]}>
-          <View style={styles.pdfIcon}><Ionicons name="document-text" size={22} color="#f87171" /></View>
+          <View style={styles.pdfIcon}><Ionicons name="document-text" size={22} color={colors.danger} /></View>
           <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
             <Text style={styles.fName} numberOfLines={1}>{file.name}</Text>
             <View style={[styles.metaRow, { flexDirection: rowDir }]}>
               <View style={[styles.kindBadge, { backgroundColor: meta.bg }]}>
                 <Text style={[styles.kindText, { color: meta.tint }]}>{t(meta.key)}</Text>
               </View>
-              {file.protected ? <Ionicons name="lock-closed" size={11} color="#fbbf24" /> : null}
+              {file.protected ? <Ionicons name="lock-closed" size={11} color={colors.warning} /> : null}
               <Text style={styles.fInfo}>{fmtSize(file.size)}</Text>
             </View>
           </View>
@@ -113,10 +116,10 @@ export default function FilesScreen() {
             )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.miniBtn} onPress={() => shareFile(file)}>
-            <Ionicons name="share-social-outline" size={15} color="#94a3b8" />
+            <Ionicons name="share-social-outline" size={15} color={colors.textMuted} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.miniBtn} onPress={() => onDelete(file)}>
-            <Ionicons name="trash-outline" size={15} color="#94a3b8" />
+            <Ionicons name="trash-outline" size={15} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
       </View>
@@ -127,7 +130,7 @@ export default function FilesScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <View style={[styles.headerRow, { flexDirection: rowDir }]}>
-          <Ionicons name="search" size={20} color="#475569" />
+          <Ionicons name="search" size={20} color={colors.textMuted} />
           <Text style={styles.title}>{t('myFiles')}</Text>
         </View>
         <Text style={[styles.subtitle, { textAlign: isRTL ? 'right' : 'left' }]}>
@@ -136,10 +139,10 @@ export default function FilesScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.center}><ActivityIndicator size="large" color="#60a5fa" /></View>
+        <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
       ) : files.length === 0 ? (
         <View style={styles.empty}>
-          <View style={styles.emptyIcon}><Ionicons name="folder-open-outline" size={44} color="#475569" /></View>
+          <View style={styles.emptyIcon}><Ionicons name="folder-open-outline" size={44} color={colors.textMuted} /></View>
           <Text style={styles.emptyTitle}>{t('noFilesTitle')}</Text>
           <Text style={styles.emptyDesc}>{t('noFilesDesc')}</Text>
           <TouchableOpacity style={styles.browseBtn} onPress={() => router.push('/(tabs)')}>
@@ -157,32 +160,32 @@ export default function FilesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0f172a' },
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   header: { padding: 18, paddingBottom: 14 },
   headerRow: { alignItems: 'center', justifyContent: 'space-between' },
   title: { color: '#fff', fontSize: 22, fontWeight: '500' },
-  subtitle: { color: '#94a3b8', fontSize: 13, marginTop: 10 },
+  subtitle: { color: c.textMuted, fontSize: 13, marginTop: 10 },
   scroll: { paddingHorizontal: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
-  emptyIcon: { width: 90, height: 90, borderRadius: 24, backgroundColor: '#1e293b', borderWidth: 0.5, borderColor: '#2d3a4f', alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
-  emptyTitle: { color: '#e2e8f0', fontSize: 17, fontWeight: '500', marginBottom: 8 },
-  emptyDesc: { color: '#8896a8', fontSize: 13, lineHeight: 21, textAlign: 'center', maxWidth: 250, marginBottom: 26 },
-  browseBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#1d4ed8', borderRadius: 12, paddingVertical: 13, paddingHorizontal: 28 },
+  emptyIcon: { width: 90, height: 90, borderRadius: 24, backgroundColor: c.surface, borderWidth: 0.5, borderColor: c.surfaceAlt, alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
+  emptyTitle: { color: c.text, fontSize: 17, fontWeight: '500', marginBottom: 8 },
+  emptyDesc: { color: c.textMuted, fontSize: 13, lineHeight: 21, textAlign: 'center', maxWidth: 250, marginBottom: 26 },
+  browseBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.primary, borderRadius: 12, paddingVertical: 13, paddingHorizontal: 28 },
   browseText: { color: '#fff', fontSize: 14, fontWeight: '500' },
 
-  card: { backgroundColor: '#1e293b', borderRadius: 14, padding: 13, marginBottom: 10, borderWidth: 0.5, borderColor: '#2d3a4f' },
+  card: { backgroundColor: c.surface, borderRadius: 14, padding: 13, marginBottom: 10, borderWidth: 0.5, borderColor: c.surfaceAlt },
   cardTop: { alignItems: 'flex-start', gap: 10 },
-  pdfIcon: { width: 40, height: 46, borderRadius: 8, backgroundColor: '#3a1a1a', alignItems: 'center', justifyContent: 'center' },
+  pdfIcon: { width: 40, height: 46, borderRadius: 8, backgroundColor: c.danger, alignItems: 'center', justifyContent: 'center' },
   fName: { color: '#fff', fontSize: 14, fontWeight: '500' },
   metaRow: { alignItems: 'center', gap: 6, marginTop: 4 },
   kindBadge: { paddingHorizontal: 7, paddingVertical: 1, borderRadius: 8 },
   kindText: { fontSize: 10 },
-  fInfo: { color: '#8896a8', fontSize: 11 },
-  actions: { gap: 8, marginTop: 11, paddingTop: 11, borderTopWidth: 0.5, borderTopColor: '#2d3a4f' },
-  dlBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: '#1d4ed8', borderRadius: 9, paddingVertical: 9 },
+  fInfo: { color: c.textMuted, fontSize: 11 },
+  actions: { gap: 8, marginTop: 11, paddingTop: 11, borderTopWidth: 0.5, borderTopColor: c.surfaceAlt },
+  dlBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: c.primary, borderRadius: 9, paddingVertical: 9 },
   dlText: { color: '#fff', fontSize: 12, fontWeight: '500' },
-  miniBtn: { width: 40, backgroundColor: '#283548', borderRadius: 9, paddingVertical: 9, alignItems: 'center' },
+  miniBtn: { width: 40, backgroundColor: c.surfaceAlt, borderRadius: 9, paddingVertical: 9, alignItems: 'center' },
 });

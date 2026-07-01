@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument } from 'pdf-lib';
 import { readPdfBytes } from '@/lib/pdfBytes';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
+import { useTheme, ThemeColors } from '@/lib/theme';
 import { saveToArchive } from '@/lib/archive';
 
 /**
@@ -39,6 +40,8 @@ type PickedFile = {
 export default function DeletePagesScreen() {
   const router = useRouter();
   const { t, isRTL } = useLang();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [file, setFile] = useState<PickedFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [outputName, setOutputName] = useState('edited');
@@ -198,7 +201,7 @@ export default function DeletePagesScreen() {
 
         {/* Pick button */}
         <TouchableOpacity style={styles.pickBtn} onPress={pickFile} disabled={busy}>
-          <Ionicons name="folder-open-outline" size={26} color="#60a5fa" style={{ marginBottom: 6 }} />
+          <Ionicons name="folder-open-outline" size={26} color={colors.primary} style={{ marginBottom: 6 }} />
           <Text style={styles.pickText}>{file ? t('pickPdfDiff') : t('pickPdf')}</Text>
         </TouchableOpacity>
 
@@ -208,7 +211,7 @@ export default function DeletePagesScreen() {
             <View style={styles.fileCard}>
               <View style={styles.fileRow}>
                 <TouchableOpacity onPress={clearFile} disabled={busy}>
-                  <Ionicons name="close" size={15} color="#f87171" />
+                  <Ionicons name="close" size={15} color={colors.danger} />
                 </TouchableOpacity>
                 <Text style={styles.fileSize}>
                   {formatSize(file.size)} · {file.pageCount} pages
@@ -230,7 +233,7 @@ export default function DeletePagesScreen() {
                     <Text style={styles.toolBtnText}>None</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={markAll} disabled={busy}>
-                    <Text style={[styles.toolBtnText, { color: '#f87171' }]}>All</Text>
+                    <Text style={[styles.toolBtnText, { color: colors.danger }]}>All</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -268,7 +271,7 @@ export default function DeletePagesScreen() {
                   value={outputName}
                   onChangeText={setOutputName}
                   placeholder="edited"
-                  placeholderTextColor="#64748b"
+                  placeholderTextColor={colors.textMuted}
                   editable={!busy}
                   autoCapitalize="none"
                 />
@@ -302,53 +305,51 @@ export default function DeletePagesScreen() {
   );
 }
 
-const NAVY = '#1F4E78';
-const RED = '#dc2626';
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0f172a' },
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   scroll: { padding: 16 },
 
   header: { paddingVertical: 12 },
   backBtn: { marginBottom: 8 },
-  backText: { color: '#60a5fa', fontSize: 16, fontWeight: '700' },
-  title: { fontSize: 26, fontWeight: '800', color: '#ffffff' },
-  subtitle: { fontSize: 13, color: '#94a3b8', marginTop: 6, lineHeight: 19 },
+  backText: { color: c.primary, fontSize: 16, fontWeight: '700' },
+  title: { fontSize: 26, fontWeight: '800', color: c.surface },
+  subtitle: { fontSize: 13, color: c.textMuted, marginTop: 6, lineHeight: 19 },
 
   pickBtn: {
     borderWidth: 2,
-    borderColor: NAVY,
+    borderColor: c.primary,
     borderStyle: 'dashed',
     borderRadius: 14,
     paddingVertical: 28,
     alignItems: 'center',
-    backgroundColor: '#16233a',
+    backgroundColor: c.surface,
     marginTop: 16,
     marginBottom: 18,
   },
   pickIcon: { fontSize: 32, marginBottom: 6 },
-  pickText: { color: '#cbd5e1', fontWeight: '700', fontSize: 14 },
+  pickText: { color: c.textMuted, fontWeight: '700', fontSize: 14 },
 
   fileCard: {
-    backgroundColor: '#1e293b',
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 12,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#293548',
+    borderColor: c.surfaceAlt,
   },
   fileRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  removeBtn: { color: '#f87171', fontWeight: '800', fontSize: 14 },
-  fileSize: { color: '#64748b', fontSize: 11, fontWeight: '700' },
-  fileName: { flex: 1, color: '#e2e8f0', fontSize: 13, fontWeight: '600', textAlign: 'right' },
+  removeBtn: { color: c.danger, fontWeight: '800', fontSize: 14 },
+  fileSize: { color: c.textMuted, fontSize: 11, fontWeight: '700' },
+  fileName: { flex: 1, color: c.text, fontSize: 13, fontWeight: '600', textAlign: 'right' },
 
   listBox: {
-    backgroundColor: '#1e293b',
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#293548',
+    borderColor: c.surfaceAlt,
   },
   pageTools: {
     flexDirection: 'row',
@@ -356,10 +357,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
-  pageInfo: { color: '#94a3b8', fontSize: 12, fontWeight: '700' },
+  pageInfo: { color: c.textMuted, fontSize: 12, fontWeight: '700' },
   pageToolsBtns: { flexDirection: 'row', gap: 16 },
-  toolBtnText: { color: '#94a3b8', fontSize: 12, fontWeight: '700' },
-  hintSmall: { color: '#64748b', fontSize: 11, marginBottom: 10 },
+  toolBtnText: { color: c.textMuted, fontSize: 12, fontWeight: '700' },
+  hintSmall: { color: c.textMuted, fontSize: 11, marginBottom: 10 },
 
   pagesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pageBtn: {
@@ -367,47 +368,47 @@ const styles = StyleSheet.create({
     height: 38,
     paddingHorizontal: 6,
     borderRadius: 8,
-    backgroundColor: '#0f172a',
+    backgroundColor: c.bg,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: c.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pageBtnMarked: { backgroundColor: RED, borderColor: '#f87171' },
-  pageBtnText: { color: '#94a3b8', fontSize: 13, fontWeight: '700' },
-  pageBtnTextMarked: { color: '#ffffff' },
+  pageBtnMarked: { backgroundColor: c.danger, borderColor: c.danger },
+  pageBtnText: { color: c.textMuted, fontSize: 13, fontWeight: '700' },
+  pageBtnTextMarked: { color: c.surface },
 
   optionsBox: {
-    backgroundColor: '#1e293b',
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#293548',
+    borderColor: c.surfaceAlt,
   },
-  optLabel: { color: '#e2e8f0', fontWeight: '800', fontSize: 13, marginBottom: 8 },
+  optLabel: { color: c.text, fontWeight: '800', fontSize: 13, marginBottom: 8 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   input: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: c.bg,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: c.border,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    color: '#ffffff',
+    color: c.surface,
     fontSize: 15,
     fontWeight: '700',
   },
-  ext: { color: '#94a3b8', fontSize: 14, fontWeight: '700' },
+  ext: { color: c.textMuted, fontSize: 14, fontWeight: '700' },
 
   actionBtn: {
-    backgroundColor: RED,
+    backgroundColor: c.danger,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
   },
   actionBtnDisabled: { opacity: 0.5 },
   actionText: { color: '#fff', fontWeight: '800', fontSize: 15 },
-  warn: { color: '#f87171', fontSize: 12, fontWeight: '700', textAlign: 'center', marginTop: 12 },
+  warn: { color: c.danger, fontSize: 12, fontWeight: '700', textAlign: 'center', marginTop: 12 },
 });
