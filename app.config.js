@@ -26,7 +26,7 @@ module.exports = {
   expo: {
     name: NAME,
     slug: 'SmartPdfMobile', // يبقى ثابتاً — مشروع Expo واحد
-    version: '1.0.4',
+    version: '1.0.3',
     orientation: 'portrait',
     icon: './assets/images/icon.png',
     scheme: SCHEME,
@@ -44,7 +44,7 @@ module.exports = {
         backgroundColor: '#1F4E78',
         foregroundImage: './assets/images/adaptive-icon.png',
       },
-      versionCode: 6,
+      versionCode: 3,
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
       package: PACKAGE,
