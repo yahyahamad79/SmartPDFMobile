@@ -218,12 +218,18 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
     if (!gotServer) {
       left = daysLeftFrom(effectiveStart, now);
       active = left > 0;
-    }
-
-    // عبث بالساعة => إنهاء فوري (يطبّق في كل الأحوال)
-    if (isTampered) {
-      active = false;
-      left = 0;
+      // كشف العبث بالساعة يُطبّق فقط في الوضع المحلي (بلا خادم)
+      if (isTampered) {
+        active = false;
+        left = 0;
+      }
+    } else {
+      // الخادم مصدر الحقيقة: إن قال "فعّالة" نفتح ونمسح أي علامة عبث قديمة.
+      // (كشف العبث المحلي احتياطي فقط، لا يتجاوز قرار الخادم.)
+      if (active) {
+        isTampered = false;
+        await secureSet(K_TAMPER, '0');
+      }
     }
 
     setDaysLeft(left!);
