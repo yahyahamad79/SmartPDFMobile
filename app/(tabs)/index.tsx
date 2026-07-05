@@ -55,13 +55,13 @@ const ORGANIZE: Tool[] = [
 ];
 
 const CONVERT_TO: Tool[] = [
+  { id: 'img2pdf', route: '/images-to-pdf', titleKey: 'toolImg2Pdf', descKey: 'toolImg2PdfDesc', Icon: ImageIcon,       iconBg: '#0EA5E9' },
   { id: 'xls2pdf', route: null, titleKey: 'toolXls2Pdf', descKey: 'toolXls2PdfDesc', Icon: FileSpreadsheet, iconBg: '#10B981' },
   { id: 'ppt2pdf', route: null, titleKey: 'toolPpt2Pdf', descKey: 'toolPpt2PdfDesc', Icon: Presentation,    iconBg: '#F97316' },
   { id: 'doc2pdf', route: null, titleKey: 'toolDoc2Pdf', descKey: 'toolDoc2PdfDesc', Icon: Files,           iconBg: '#6366F1' },
 ];
 
 const CONVERT_FROM: Tool[] = [
-  { id: 'pdf2img', route: '/images-to-pdf', titleKey: 'toolPdf2Img', descKey: 'toolPdf2ImgDesc', Icon: ImageIcon, iconBg: '#0EA5E9' },
   { id: 'pdf2doc', route: null,             titleKey: 'toolPdf2Doc', descKey: 'toolPdf2DocDesc', Icon: FileType,  iconBg: '#2563EB' },
   { id: 'pdf2ppt', route: null,             titleKey: 'toolPdf2Ppt', descKey: 'toolPdf2PptDesc', Icon: FileType2, iconBg: '#DC2626' },
 ];

@@ -91,8 +91,6 @@ const STRINGS: Record<string, { ar: string; en: string }> = {
   toolImg2PdfDesc: { ar: 'حوّل صورك إلى مستند', en: 'Turn images into a document' },
   toolProtect: { ar: 'حماية PDF', en: 'Protect PDF' },
   toolProtectDesc: { ar: 'تشفير بكلمة مرور', en: 'Encrypt with a password' },
-  toolPdf2Img: { ar: 'PDF إلى صور', en: 'PDF to Images' },
-  toolPdf2ImgDesc: { ar: 'استخراج الصفحات كصور', en: 'Export pages as images' },
   toolDoc2Pdf: { ar: 'Word / Excel إلى PDF', en: 'Word / Excel to PDF' },
   toolDoc2PdfDesc: { ar: 'تحويل المستندات', en: 'Convert documents' },
   daysLeftLabel: { ar: 'متبقٍ', en: 'left' },
