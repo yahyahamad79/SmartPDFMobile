@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Application from 'expo-application';
+import * as Device from 'expo-device';
 import * as SecureStore from 'expo-secure-store';
 import React, {
   createContext,
@@ -102,6 +103,23 @@ export const getDeviceId = async (): Promise<string> => {
   return fallback;
 };
 
+// ===== معلومات الجهاز (لعرضها في لوحة التحكم فقط — لا تؤثر على منطق التجربة) =====
+type DeviceInfo = {
+  platform: string;
+  model: string;
+  osVersion: string;
+  appVersion: string;
+};
+
+function getDeviceInfo(): DeviceInfo {
+  return {
+    platform: Platform.OS,
+    model: Device.modelName ?? '',
+    osVersion: Device.osVersion ?? '',
+    appVersion: Application.nativeApplicationVersion ?? '',
+  };
+}
+
 // ===== الطبقة المحلية: تاريخ البدء + كشف العبث (تعمل بلا نت) =====
 async function computeLocalStart(): Promise<{
   startMs: number;
@@ -178,13 +196,16 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
     // ---- الخادم مصدر الحقيقة: يقرّر المدة والأيام المتبقية ----
     try {
       const deviceId = await getDeviceId();
+      console.log('🔑 SmartPDF Device ID:', deviceId);  // للتشخيص — احذفه لاحقاً
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+      const deviceInfo = getDeviceInfo();
 
       const res = await fetch(`${SERVER_URL}/trial/check`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId }),
+        body: JSON.stringify({ deviceId, ...deviceInfo }),
         signal: controller.signal,
       });
       clearTimeout(timer);
