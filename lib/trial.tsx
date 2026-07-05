@@ -85,7 +85,7 @@ const secureSet = async (key: string, value: string): Promise<void> => {
 };
 
 // ===== معرّف ثابت للجهاز =====
-const getDeviceId = async (): Promise<string> => {
+export const getDeviceId = async (): Promise<string> => {
   try {
     if (Platform.OS === 'android') {
       const id = Application.getAndroidId();

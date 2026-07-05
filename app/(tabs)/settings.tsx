@@ -17,13 +17,15 @@ import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useLang } from '@/lib/i18n';
-import { useTrial } from '@/lib/trial';
+import { useTrial, getDeviceId } from '@/lib/trial';
 import { clearArchive } from '@/lib/archive';
+import { SERVER_URL } from '@/lib/config';
 import { useTheme, ThemeColors, deriveColors } from '@/lib/theme';
 
 const WHATSAPP_URL = 'https://wa.me/972599601769';
 const PRIVACY_URL = 'https://yahyahamad79.github.io/smartpdf-privacy/';
 const DIR_KEY = 'download_dir_uri_v1';
+const PROFILE_KEY = 'user_profile_v1';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -31,6 +33,48 @@ export default function SettingsScreen() {
   const { isTrialActive, daysLeft, tampered } = useTrial();
   const { colors, themeId, setTheme, allThemes, addCustomTheme, deleteCustomTheme } = useTheme();
   const [dirLabel, setDirLabel] = useState<string>('Downloads/SmartPDF');
+
+  // معلومات المستخدم (الاسم/الرقم) — تُرسل للخادم لتمييز الجهاز في لوحة التحكم
+  const [myName, setMyName] = useState('');
+  const [myPhone, setMyPhone] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(PROFILE_KEY);
+        if (raw) {
+          const p = JSON.parse(raw);
+          setMyName(p.label || '');
+          setMyPhone(p.phone || '');
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const saveProfile = async () => {
+    setSavingProfile(true);
+    setProfileSaved(false);
+    try {
+      const deviceId = await getDeviceId();
+      await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ label: myName, phone: myPhone }));
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
+      await fetch(`${SERVER_URL}/trial/profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId, label: myName.trim(), phone: myPhone.trim() }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      setProfileSaved(true);
+    } catch {
+      // حتى لو فشل الإرسال، حُفظ محلياً وسيُرسل عند فحص التجربة لاحقاً
+      setProfileSaved(true);
+    }
+    setSavingProfile(false);
+  };
 
   // حالة نافذة إنشاء ثيم مخصّص
   const [showCreate, setShowCreate] = useState(false);
@@ -149,6 +193,38 @@ export default function SettingsScreen() {
           <TouchableOpacity style={styles.upgradeBtn} onPress={openWhatsApp}>
             <Ionicons name="diamond-outline" size={17} color={colors.onPrimary} />
             <Text style={styles.upgradeText}>{t('upgradeFull')}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* معلوماتي — الاسم والرقم (لتمييز الجهاز) */}
+        <Text style={[styles.groupLabel, { textAlign: isRTL ? 'right' : 'left' }]}>{t('myInfo')}</Text>
+        <View style={[styles.group, { padding: 14 }]}>
+          <Text style={styles.profileHint}>{t('myInfoHint')}</Text>
+          <TextInput
+            style={styles.profileInput}
+            value={myName}
+            onChangeText={(v) => { setMyName(v); setProfileSaved(false); }}
+            placeholder={t('myNamePlaceholder')}
+            placeholderTextColor={colors.textMuted}
+            textAlign={isRTL ? 'right' : 'left'}
+          />
+          <TextInput
+            style={styles.profileInput}
+            value={myPhone}
+            onChangeText={(v) => { setMyPhone(v); setProfileSaved(false); }}
+            placeholder={t('myPhonePlaceholder')}
+            placeholderTextColor={colors.textMuted}
+            keyboardType="phone-pad"
+            textAlign={isRTL ? 'right' : 'left'}
+          />
+          <TouchableOpacity
+            style={[styles.profileBtn, savingProfile && { opacity: 0.6 }]}
+            onPress={saveProfile}
+            disabled={savingProfile}
+          >
+            <Text style={styles.profileBtnText}>
+              {savingProfile ? t('saving') : profileSaved ? t('savedMark') : t('saveInfo')}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -352,6 +428,11 @@ const makeStyles = (c: ThemeColors) =>
     themeHint: { color: c.textMuted, fontSize: 10, textAlign: 'center', paddingBottom: 10, paddingHorizontal: 12 },
 
     createCard: { alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed', borderColor: c.primary, backgroundColor: 'transparent' },
+
+    profileHint: { color: c.textMuted, fontSize: 12, marginBottom: 10, textAlign: 'right', lineHeight: 17 },
+    profileInput: { backgroundColor: c.surfaceAlt, borderRadius: 10, borderWidth: 1, borderColor: c.border, color: c.text, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 10 },
+    profileBtn: { backgroundColor: c.primary, borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 2 },
+    profileBtnText: { color: c.onPrimary, fontSize: 14, fontWeight: '700' },
 
     // نافذة إنشاء الثيم
     modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 },
