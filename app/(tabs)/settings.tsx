@@ -34,9 +34,10 @@ export default function SettingsScreen() {
   const { colors, themeId, setTheme, allThemes, addCustomTheme, deleteCustomTheme } = useTheme();
   const [dirLabel, setDirLabel] = useState<string>('Downloads/SmartPDF');
 
-  // معلومات المستخدم (الاسم/الرقم) — تُرسل للخادم لتمييز الجهاز في لوحة التحكم
+  // معلومات المستخدم (الاسم/الرقم/البريد) — تُرسل للخادم لتمييز الجهاز في لوحة التحكم
   const [myName, setMyName] = useState('');
   const [myPhone, setMyPhone] = useState('');
+  const [myEmail, setMyEmail] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
 
@@ -48,6 +49,7 @@ export default function SettingsScreen() {
           const p = JSON.parse(raw);
           setMyName(p.label || '');
           setMyPhone(p.phone || '');
+          setMyEmail(p.email || '');
         }
       } catch {}
     })();
@@ -58,13 +60,14 @@ export default function SettingsScreen() {
     setProfileSaved(false);
     try {
       const deviceId = await getDeviceId();
-      await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ label: myName, phone: myPhone }));
+      const email = myEmail.trim();
+      await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ label: myName, phone: myPhone, email }));
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 20000);
       await fetch(`${SERVER_URL}/trial/profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId, label: myName.trim(), phone: myPhone.trim() }),
+        body: JSON.stringify({ deviceId, label: myName.trim(), phone: myPhone.trim(), email }),
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -215,6 +218,17 @@ export default function SettingsScreen() {
             placeholder={t('myPhonePlaceholder')}
             placeholderTextColor={colors.textMuted}
             keyboardType="phone-pad"
+            textAlign={isRTL ? 'right' : 'left'}
+          />
+          <TextInput
+            style={styles.profileInput}
+            value={myEmail}
+            onChangeText={(v) => { setMyEmail(v); setProfileSaved(false); }}
+            placeholder={isRTL ? 'البريد الإلكتروني' : 'Email'}
+            placeholderTextColor={colors.textMuted}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
             textAlign={isRTL ? 'right' : 'left'}
           />
           <TouchableOpacity
