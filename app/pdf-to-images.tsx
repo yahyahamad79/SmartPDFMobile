@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { ImageIcon, FileText, ChevronLeft, Check, Wifi } from 'lucide-react-native';
 
 import { useLang } from '@/lib/i18n';
@@ -30,7 +31,7 @@ const WAKE_TIMEOUT = 70_000;
 const UPLOAD_TIMEOUT = 300_000;   // 5 دقائق — رفع كتاب ضخم قد يأخذ وقتاً على اتصال بطيء
 const BATCH_TIMEOUT = 60_000;     // مهلة كل دفعة (10 صفحات) على حدة
 const BATCH_SIZE = 10;
-const MAX_BATCH_RETRIES = 3;
+const MAX_BATCH_RETRIES = 5;       // مقاومة أفضل لاتصال غير مستقر (كل دفعة قد تفشل مؤقتاً)
 
 type Quality = 'low' | 'medium' | 'high';
 
@@ -109,26 +110,57 @@ export default function PdfToImagesScreen() {
     return false;
   }
 
-  async function uploadFile(): Promise<{ sessionId: string; totalPages: number }> {
-    const form = new FormData();
-    // @ts-ignore — صيغة ملف React Native لـ FormData
-    form.append('file', {
-      uri: fileUri,
-      name: fileName || 'document.pdf',
-      type: 'application/pdf',
+  async function uploadFile(onProgress: (pct: number) => void): Promise<{ sessionId: string; totalPages: number }> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let task: ReturnType<typeof FileSystem.createUploadTask> | null = null;
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        task?.cancelAsync().catch(() => {});
+        reject(new Error(txtNetFail));
+      }, UPLOAD_TIMEOUT);
+
+      task = FileSystem.createUploadTask(
+        `${SERVER}/pdf2img/upload`,
+        fileUri as string,
+        {
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          fieldName: 'file',
+          mimeType: 'application/pdf',
+          parameters: {},
+        },
+        (data) => {
+          if (data.totalBytesExpectedToSend > 0) {
+            onProgress(Math.round((data.totalBytesSent / data.totalBytesExpectedToSend) * 100));
+          }
+        }
+      );
+
+      task.uploadAsync()
+        .then((res) => {
+          if (settled) return;
+          clearTimeout(timer);
+          settled = true;
+          if (!res) return reject(new Error(txtNetFail));
+          if (res.status === 413) return reject(new Error(txtTooLarge));
+          if (res.status === 400) return reject(new Error(txtInvalidPdf));
+          if (res.status !== 200) return reject(new Error(res.body || `HTTP ${res.status}`));
+          try {
+            resolve(JSON.parse(res.body));
+          } catch {
+            reject(new Error(txtInvalidPdf));
+          }
+        })
+        .catch((e) => {
+          if (settled) return;
+          clearTimeout(timer);
+          settled = true;
+          reject(e);
+        });
     });
-    const resp = await fetchWithTimeout(
-      `${SERVER}/pdf2img/upload`,
-      { method: 'POST', body: form },
-      UPLOAD_TIMEOUT
-    );
-    if (!resp.ok) {
-      if (resp.status === 413) throw new Error(txtTooLarge);
-      if (resp.status === 400) throw new Error(txtInvalidPdf);
-      const txt = await resp.text().catch(() => '');
-      throw new Error(txt || `HTTP ${resp.status}`);
-    }
-    return resp.json();
   }
 
   // تُعالج دفعة واحدة مع إعادة محاولة تلقائية عند انقطاع مؤقت
@@ -153,7 +185,7 @@ export default function PdfToImagesScreen() {
         return await resp.json();
       } catch (e) {
         lastErr = e;
-        if (attempt < MAX_BATCH_RETRIES - 1) await sleep(1500 * (attempt + 1));
+        if (attempt < MAX_BATCH_RETRIES - 1) await sleep(Math.min(8000, 1500 * (attempt + 1)));
       }
     }
     throw lastErr || new Error(txtNetFail);
@@ -189,7 +221,10 @@ export default function PdfToImagesScreen() {
       if (!awake) throw new Error(txtWakeFail);
 
       setPhase(txtUploading);
-      const { sessionId, totalPages } = await uploadFile();
+      const { sessionId, totalPages } = await uploadFile((uploadPct) => {
+        setProgress(Math.round(uploadPct * 0.2));
+        setPhase(`${txtUploading} ${uploadPct}%`);
+      });
 
       // حلقة الدفعات — شريط تقدّم واحد متصل، المستخدم لا يرى الدفعات إطلاقاً
       let done = false;
@@ -199,10 +234,10 @@ export default function PdfToImagesScreen() {
         const r = await processBatch(sessionId);
         processed = r.processed;
         done = r.done;
-        const pct = Math.round((processed / r.total) * 100);
-        setProgress(pct);
+        const batchPct = Math.round((processed / r.total) * 100);
+        setProgress(20 + Math.round(batchPct * 0.8));
         setPagesLabel(`${processed} / ${r.total}`);
-        setPhase(`${t('pdf2imgBusy')} ${pct}%`);
+        setPhase(`${t('pdf2imgBusy')} ${batchPct}%`);
       }
 
       setPhase(t('pdf2imgSaving'));
