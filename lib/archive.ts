@@ -129,7 +129,6 @@ export async function downloadToDevice(
   try {
     const ext = getExt(file.name) || '.pdf';
     const mime = getMime(ext);
-    const base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: 'base64' });
     if (Platform.OS === 'android') {
       let dirUri = savedDirUri || null;
       if (dirUri) {
@@ -145,7 +144,8 @@ export async function downloadToDevice(
       const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
         dirUri, file.name.slice(0, file.name.length - ext.length), mime
       );
-      await FileSystem.writeAsStringAsync(destUri, base64, { encoding: 'base64' });
+      // نسخ مباشر (بلا Base64 وسيط بالذاكرة) — يعمل بأي حجم ملف
+      await FileSystem.copyAsync({ from: file.uri, to: destUri });
       return { ok: true, dirUri };
     } else {
       if (await Sharing.isAvailableAsync())
