@@ -1,13 +1,9 @@
  خطوات انشاء تطبيق جديد من Expo:
---------------------------------------
-اضغط زر "Build from GitHub" بالزاوية العلوية اليمين (نفس الزر اللي فتح النافذة أول مرة) لإعادة فتحها.
-اعبّي الحقول من جديد بنفس الترتيب اللي اتفقنا عليه:
 
-Base directory: /
-Platform: Android
-Git ref: اختار main من القائمة المنسدلة (مش يدوياً هالمرة)
-Environment/Profile: Preview
-
-
-اضغط Confirm.
+1-Build from GitHub
+2-Base directory: /
+3-Platform: Android
+4-Git ref:main
+5-Environment/Profile: Preview
+6-Confirm.
 
