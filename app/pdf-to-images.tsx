@@ -24,7 +24,7 @@ import { ImageIcon, FileText, ChevronLeft, Check, Wifi } from 'lucide-react-nati
 
 import { useLang } from '@/lib/i18n';
 import { useTheme, ThemeColors } from '@/lib/theme';
-import { saveToArchive } from '@/lib/archive';
+import { saveDownloadedFile } from '@/lib/archive';
 import { SERVER_URL as SERVER } from '@/lib/config';
 
 const WAKE_TIMEOUT = 70_000;
@@ -191,25 +191,9 @@ export default function PdfToImagesScreen() {
     throw lastErr || new Error(txtNetFail);
   }
 
-  async function downloadZip(sessionId: string): Promise<string> {
-    const resp = await fetchWithTimeout(
-      `${SERVER}/pdf2img/download/${sessionId}`,
-      { method: 'GET' },
-      UPLOAD_TIMEOUT
-    );
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const blob = await resp.blob();
-    return await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('read failed'));
-      reader.onloadend = () => {
-        const r = String(reader.result || '');
-        const comma = r.indexOf(',');
-        resolve(comma >= 0 ? r.slice(comma + 1) : r);
-      };
-      reader.readAsDataURL(blob);
-    });
-  }
+  // ملاحظة: التنزيل الفعلي صار عبر saveDownloadedFile (تدفّق مباشر للقرص)
+  // بدل blob→FileReader→Base64 اللي كانت تفشل بـ "read failed" على الكتب
+  // الكبيرة (ZIP قد يتجاوز عشرات/مئات الميجابايتات).
 
   async function startConversion() {
     cancelledRef.current = false;
@@ -241,13 +225,17 @@ export default function PdfToImagesScreen() {
       }
 
       setPhase(t('pdf2imgSaving'));
-      const zipB64 = await downloadZip(sessionId);
 
       let baseName = (fileName || 'document.pdf').replace(/\.pdf$/i, '');
       baseName = baseName.replace(/[\\/:*?"<>|]/g, '_');
       const outName = `${baseName}_images.zip`;
 
-      const saved = await saveToArchive(zipB64, outName, 'pdf2img');
+      const saved = await saveDownloadedFile(
+        `${SERVER}/pdf2img/download/${sessionId}`,
+        outName,
+        'pdf2img'
+      );
+      if (!saved) throw new Error(txtNetFail);
       if (saved) {
         router.push({
           pathname: '/result',

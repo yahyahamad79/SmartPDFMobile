@@ -67,6 +67,42 @@ export async function saveToArchive(
   } catch (e) { console.log('ARCHIVE SAVE ERROR:', e); return null; }
 }
 
+/**
+ * ينزّل ملفاً من رابط مباشرة لمجلد الأرشيف على القرص (Stream-to-disk)
+ * بدون تحميل محتواه كنص Base64 بذاكرة جافاسكريبت أبداً.
+ * ضروري للملفات الضخمة (مثل ZIP تحويل كتاب كامل لصور) التي قد تتجاوز
+ * عشرات أو مئات الميجابايتات — تحويلها لنص Base64 بالذاكرة يفشل بخطأ
+ * "read failed" (FileReader) على أغلب الأجهزة.
+ */
+export async function saveDownloadedFile(
+  url: string, fileName: string, kind: ToolKind, opts?: { protected?: boolean }
+): Promise<ArchiveFile | null> {
+  try {
+    await ensureDir();
+    let finalName = fileName;
+    const ext = getExt(fileName) || '.pdf';
+    const exists = await FileSystem.getInfoAsync(ARCHIVE_DIR + finalName);
+    if (exists.exists) {
+      const stamp = Date.now().toString().slice(-5);
+      const baseNoExt = fileName.slice(0, fileName.length - ext.length);
+      finalName = `${baseNoExt}_${stamp}${ext}`;
+    }
+    const uri = ARCHIVE_DIR + finalName;
+    const result = await FileSystem.downloadAsync(url, uri);
+    if (!result || result.status !== 200) {
+      try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch {}
+      console.log('ARCHIVE DOWNLOAD ERROR: HTTP', result?.status);
+      return null;
+    }
+    const info = await FileSystem.getInfoAsync(uri, { size: true });
+    const createdAt = Date.now();
+    const meta = await readMeta();
+    meta[finalName] = { kind, createdAt, protected: opts?.protected };
+    await writeMeta(meta);
+    return { name: finalName, uri, size: (info as any).size ?? 0, createdAt, kind, protected: opts?.protected };
+  } catch (e) { console.log('ARCHIVE DOWNLOAD ERROR:', e); return null; }
+}
+
 export async function listArchive(): Promise<ArchiveFile[]> {
   try {
     await ensureDir();
