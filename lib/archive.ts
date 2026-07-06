@@ -8,7 +8,7 @@ const META_KEY = 'meta.json';
 export const DIR_KEY = 'download_dir_uri_v1';
 
 export type ToolKind =
-  | 'merge' | 'split' | 'rotate' | 'delete' | 'img2pdf' | 'protect' | 'other';
+  | 'merge' | 'split' | 'rotate' | 'delete' | 'img2pdf' | 'protect' | 'pdf2img' | 'other';
 
 export type ArchiveFile = {
   name: string; uri: string; size: number;
@@ -16,6 +16,18 @@ export type ArchiveFile = {
 };
 
 type MetaMap = Record<string, { kind: ToolKind; createdAt: number; protected?: boolean }>;
+
+// امتدادات الملفات المدعومة بالأرشيف (PDF لكل الأدوات، ZIP لتحويل PDF إلى صور)
+const SUPPORTED_EXT = ['.pdf', '.zip'];
+
+function getExt(name: string): string {
+  const m = name.match(/\.[a-zA-Z0-9]+$/);
+  return m ? m[0].toLowerCase() : '';
+}
+function getMime(ext: string): string {
+  if (ext === '.zip') return 'application/zip';
+  return 'application/pdf';
+}
 
 async function ensureDir(): Promise<void> {
   try {
@@ -37,10 +49,12 @@ export async function saveToArchive(
   try {
     await ensureDir();
     let finalName = fileName;
+    const ext = getExt(fileName) || '.pdf';
     const exists = await FileSystem.getInfoAsync(ARCHIVE_DIR + finalName);
     if (exists.exists) {
       const stamp = Date.now().toString().slice(-5);
-      finalName = fileName.replace(/\.pdf$/i, '') + `_${stamp}.pdf`;
+      const baseNoExt = fileName.slice(0, fileName.length - ext.length);
+      finalName = `${baseNoExt}_${stamp}${ext}`;
     }
     const uri = ARCHIVE_DIR + finalName;
     await FileSystem.writeAsStringAsync(uri, base64, { encoding: 'base64' });
@@ -61,7 +75,8 @@ export async function listArchive(): Promise<ArchiveFile[]> {
     const files: ArchiveFile[] = [];
     for (const name of names) {
       if (name === META_KEY) continue;
-      if (!name.toLowerCase().endsWith('.pdf')) continue;
+      const ext = getExt(name);
+      if (!SUPPORTED_EXT.includes(ext)) continue;
       const uri = ARCHIVE_DIR + name;
       const info = await FileSystem.getInfoAsync(uri, { size: true });
       const m = meta[name];
@@ -76,6 +91,8 @@ export async function downloadToDevice(
   file: ArchiveFile, savedDirUri?: string | null
 ): Promise<{ ok: boolean; dirUri?: string }> {
   try {
+    const ext = getExt(file.name) || '.pdf';
+    const mime = getMime(ext);
     const base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: 'base64' });
     if (Platform.OS === 'android') {
       let dirUri = savedDirUri || null;
@@ -90,13 +107,13 @@ export async function downloadToDevice(
         try { await AsyncStorage.setItem(DIR_KEY, dirUri); } catch {}
       }
       const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
-        dirUri, file.name.replace(/\.pdf$/i, ''), 'application/pdf'
+        dirUri, file.name.slice(0, file.name.length - ext.length), mime
       );
       await FileSystem.writeAsStringAsync(destUri, base64, { encoding: 'base64' });
       return { ok: true, dirUri };
     } else {
       if (await Sharing.isAvailableAsync())
-        await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: file.name });
+        await Sharing.shareAsync(file.uri, { mimeType: mime, dialogTitle: file.name });
       return { ok: true };
     }
   } catch (e) { console.log('DOWNLOAD ERROR:', e); return { ok: false }; }
@@ -104,8 +121,9 @@ export async function downloadToDevice(
 
 export async function shareFile(file: ArchiveFile): Promise<void> {
   try {
+    const ext = getExt(file.name) || '.pdf';
     if (await Sharing.isAvailableAsync())
-      await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: file.name });
+      await Sharing.shareAsync(file.uri, { mimeType: getMime(ext), dialogTitle: file.name });
   } catch (e) { console.log('SHARE ERROR:', e); }
 }
 

@@ -72,6 +72,23 @@ const STRINGS: Record<string, { ar: string; en: string }> = {
   compressFailed: { ar: 'فشل الضغp', en: 'Compression failed' },
   serverError: { ar: 'خطأ في الخادم', en: 'Server error' },
 
+  // شاشة تحويل PDF إلى صور (بالدفعات — تدعم كتباً كاملة مهما كان حجمها)
+  pdf2imgTitle: { ar: 'تحويل PDF إلى صور', en: 'PDF to Images' },
+  pdf2imgOnlineNote: { ar: 'هذه الأداة تعمل عبر الإنترنت وتدعم كتباً كاملة مهما كان عدد صفحاتها.', en: 'This tool runs online and supports full books of any page count.' },
+  pdf2imgQuality: { ar: 'جودة الصور', en: 'Image quality' },
+  pdf2imgLow: { ar: 'خفيفة', en: 'Low' },
+  pdf2imgMedium: { ar: 'متوسطة', en: 'Medium' },
+  pdf2imgHigh: { ar: 'عالية', en: 'High' },
+  pdf2imgBtn: { ar: 'تحويل وحفظ', en: 'Convert & Save' },
+  pdf2imgBusy: { ar: 'جارٍ التحويل…', en: 'Converting…' },
+  pdf2imgPreparing: { ar: 'جارٍ تجهيز الملف…', en: 'Preparing file…' },
+  pdf2imgSaving: { ar: 'جارٍ حفظ النتيجة…', en: 'Saving result…' },
+  pdf2imgConfirmTitle: { ar: 'تأكيد التحويل', en: 'Confirm conversion' },
+  pdf2imgConfirmProceed: { ar: 'بدء التحويل', en: 'Start conversion' },
+  pdf2imgHint: { ar: 'الملفات الكبيرة تُعالَج تلقائياً على دفعات صغيرة خلف الكواليس. لا تُغلق الشاشة أثناء المعالجة.', en: 'Large files are automatically processed in small batches behind the scenes. Keep the screen open while processing.' },
+  pdf2imgFailed: { ar: 'فشل التحويل', en: 'Conversion failed' },
+  pdf2imgResume: { ar: 'إعادة المحاولة', en: 'Retry' },
+
   // شاشة الأدوات
   homeTagline: { ar: 'صندوق أدواتك الكامل للـ PDF — اختر ما تحتاجه', en: 'Your complete PDF toolkit — pick what you need' },
   catOrganize: { ar: 'التنظيم', en: 'Organize' },
@@ -91,6 +108,8 @@ const STRINGS: Record<string, { ar: string; en: string }> = {
   toolImg2PdfDesc: { ar: 'حوّل صورك إلى مستند', en: 'Turn images into a document' },
   toolProtect: { ar: 'حماية PDF', en: 'Protect PDF' },
   toolProtectDesc: { ar: 'تشفير بكلمة مرور', en: 'Encrypt with a password' },
+  toolPdf2Img: { ar: 'PDF إلى صور', en: 'PDF to Images' },
+  toolPdf2ImgDesc: { ar: 'استخراج الصفحات كصور', en: 'Export pages as images' },
   toolDoc2Pdf: { ar: 'Word / Excel إلى PDF', en: 'Word / Excel to PDF' },
   toolDoc2PdfDesc: { ar: 'تحويل المستندات', en: 'Convert documents' },
   daysLeftLabel: { ar: 'متبقٍ', en: 'left' },

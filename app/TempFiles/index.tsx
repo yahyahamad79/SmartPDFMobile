@@ -62,7 +62,6 @@ const CONVERT_TO: Tool[] = [
 ];
 
 const CONVERT_FROM: Tool[] = [
-  { id: 'pdf2img', route: '/pdf-to-images', titleKey: 'toolPdf2Img', descKey: 'toolPdf2ImgDesc', Icon: ImageIcon, iconBg: '#0891B2' },
   { id: 'pdf2doc', route: null,             titleKey: 'toolPdf2Doc', descKey: 'toolPdf2DocDesc', Icon: FileType,  iconBg: '#2563EB' },
   { id: 'pdf2ppt', route: null,             titleKey: 'toolPdf2Ppt', descKey: 'toolPdf2PptDesc', Icon: FileType2, iconBg: '#DC2626' },
 ];
