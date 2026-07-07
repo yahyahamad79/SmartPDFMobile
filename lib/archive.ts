@@ -123,12 +123,28 @@ export async function listArchive(): Promise<ArchiveFile[]> {
   } catch (e) { console.log('ARCHIVE LIST ERROR:', e); return []; }
 }
 
+// أعلى حجم آمن لتحويل الملف كامل لنص Base64 بذاكرة جافاسكريبت.
+// أكبر من هذا: نستخدم "مشاركة" (Share Sheet) بدل الحفظ المباشر — تمرّر
+// مسار الملف للنظام مباشرة بلا قراءة كاملة بالذاكرة، تعمل بأي حجم.
+const SAFE_BASE64_LIMIT = 50 * 1024 * 1024; // 50 ميجا
+
 export async function downloadToDevice(
   file: ArchiveFile, savedDirUri?: string | null
-): Promise<{ ok: boolean; dirUri?: string }> {
+): Promise<{ ok: boolean; dirUri?: string; usedShareInstead?: boolean }> {
   try {
     const ext = getExt(file.name) || '.pdf';
     const mime = getMime(ext);
+
+    // ملف ضخم جداً لقراءته كاملاً بالذاكرة بأمان (كتاب كامل مثلاً) —
+    // نستخدم المشاركة مباشرة بدل الحفظ داخل SAF (يعمل على أندرويد وiOS معاً)
+    if (file.size > SAFE_BASE64_LIMIT) {
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(file.uri, { mimeType: mime, dialogTitle: file.name });
+        return { ok: true, usedShareInstead: true };
+      }
+      return { ok: false };
+    }
+
     if (Platform.OS === 'android') {
       let dirUri = savedDirUri || null;
       if (dirUri) {
@@ -144,8 +160,10 @@ export async function downloadToDevice(
       const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
         dirUri, file.name.slice(0, file.name.length - ext.length), mime
       );
-      // نسخ مباشر (بلا Base64 وسيط بالذاكرة) — يعمل بأي حجم ملف
-      await FileSystem.copyAsync({ from: file.uri, to: destUri });
+      // قراءة/كتابة Base64 — الطريقة الوحيدة المؤكَّدة فعلياً للكتابة
+      // داخل روابط SAF. آمنة هنا لأن الحجم أقل من SAFE_BASE64_LIMIT.
+      const base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: 'base64' });
+      await FileSystem.writeAsStringAsync(destUri, base64, { encoding: 'base64' });
       return { ok: true, dirUri };
     } else {
       if (await Sharing.isAvailableAsync())
